@@ -106,6 +106,68 @@ func (r *Registry) register() {
 		return "配置已写入 " + r.configPath()
 	}
 
+	// gen_config: build a full YAML config FROM A STRUCTURED SPEC (not raw YAML).
+	// Distinct from update_config (which overwrites with raw YAML): this is the
+	// "agent generates a config file" surface — the LLM turns the user's natural
+	// language ("我要一个 8080 端口、带自动测速分组的 ss 代理") into the spec
+	// object below, the tool assembles a valid Config, round-trip-validates it,
+	// and writes to `path` (default: the config path). This is how the agent
+	// "生成配置文件" rather than hand-editing YAML.
+	r.defs = append(r.defs, ToolDef{
+		Name: "gen_config",
+		Description: "根据结构化规格从零生成一份完整可用的 config.yml（不是手写 YAML，而是拼装后校验写入）。" +
+			"用于用户用自然语言描述想要的配置后，由你(模型)把描述转成 spec，本工具负责拼装+校验+落盘。" +
+			"会覆盖目标文件，请确认用户同意。示例: spec={\"listen\":{\"http\":8080},\"mode\":\"rule\",\"proxies\":[{\"name\":\"ss1\",\"type\":\"ss\",\"server\":\"a.com\",\"port\":8388,\"cipher\":\"aes-256-gcm\",\"password\":\"pw\"}],\"groups\":[{\"name\":\"Auto\",\"type\":\"url-test\",\"proxies\":[\"ss1\"],\"url\":\"http://www.gstatic.com/generate_204\",\"interval\":300}],\"rules\":[\"GEOIP,CN,DIRECT\",\"MATCH,Auto\"]}, path=\"config.yml\"",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"spec": map[string]any{
+					"type": "object",
+					"description": "配置规格：listen{http,socks5} / mode(global|rule|direct) / proxies[] / groups[] / rules[] / tun / dns / web / mitm / n2n / stunvpv",
+					"properties": map[string]any{
+						"listen":   map[string]any{"type": "object"},
+						"mode":      map[string]any{"type": "string"},
+						"proxies":  map[string]any{"type": "array"},
+						"groups":   map[string]any{"type": "array"},
+						"rules":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"tun":      map[string]any{"type": "object"},
+						"dns":      map[string]any{"type": "object"},
+						"web":      map[string]any{"type": "object"},
+					},
+				},
+				"path": map[string]any{"type": "string", "description": "写入路径(可选，默认 config 路径)"},
+			},
+			"required": []string{"spec"},
+		},
+	})
+	r.funcs["gen_config"] = func(ctx context.Context, args map[string]any) string {
+		spec, ok := args["spec"].(map[string]any)
+		if !ok {
+			return "error: spec 必须是对象"
+		}
+		cfg, err := specToConfig(spec)
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		// Round-trip validate: marshal → parse back. Catches type errors the
+		// loose map→struct conversion might silently accept.
+		b, err := config.YAMLMarshal(cfg)
+		if err != nil {
+			return "error: marshal: " + err.Error()
+		}
+		if _, err := config.LoadFromBytes(b); err != nil {
+			return "error: 生成的配置校验失败: " + err.Error()
+		}
+		path := r.configPath()
+		if p, _ := args["path"].(string); strings.TrimSpace(p) != "" {
+			path = p
+		}
+		if err := os.WriteFile(path, b, 0644); err != nil {
+			return "error: " + err.Error()
+		}
+		return fmt.Sprintf("✅ 已生成配置 %s (%d 代理, %d 分组, %d 规则)", path, len(cfg.Proxies), len(cfg.Groups), len(cfg.Rules))
+	}
+
 	// ping_proxy: test latency of all proxies
 	r.defs = append(r.defs, ToolDef{
 		Name:        "ping_proxies",
@@ -418,7 +480,10 @@ start      启动代理（-c 配置 / --proxy 快速模式）
 status     显示当前配置
 ping       测试所有代理延迟
 use        切换手动分组
-forward    HTTPS→HTTP 劫持转发
+forward    SSH 风格端口转发: local(-L)/remote(-R)/dynamic(-D)/tls
+sysproxy   一键开关系统代理（Windows 注册表 / Linux gsettings）
+proxy/dns/web/tun/n2n/stunvpv  单独运行某个子服务（前台）
+scp        SSH/SFTP 上传下载单个文件
 tui        启动 LLM Agent 交互模式（就是你现在用的）`
 	}
 }
@@ -430,3 +495,149 @@ func (r *Registry) configPath() string {
 	cwd, _ := os.Getwd()
 	return filepath.Join(cwd, "config.yml")
 }
+
+// specToConfig assembles a config.Config from the loose map the LLM produced.
+// Each subsection is optional; missing fields take config.Load defaults on
+// the round-trip parse. The point is that the LLM only fills what the user
+// asked for — everything else resolves to the sane defaults already in
+// config.Load, so the generated file is immediately runnable.
+func specToConfig(spec map[string]any) (*config.Config, error) {
+	cfg := &config.Config{Mode: "rule"}
+
+	if v, ok := spec["mode"].(string); ok && v != "" {
+		cfg.Mode = strings.ToLower(v)
+	}
+	if cfg.Mode == "" {
+		cfg.Mode = "rule"
+	}
+
+	if ln, ok := spec["listen"].(map[string]any); ok {
+		if h := toInt(ln["http"]); h > 0 {
+			cfg.Listen.HTTP = h
+		}
+		if s := toInt(ln["socks5"]); s > 0 {
+			cfg.Listen.SOCKS5 = s
+		}
+	}
+
+	if raw, ok := spec["proxies"].([]any); ok {
+		for _, p := range raw {
+			pm, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			pc := config.ProxyConfig{
+				Name:   getString(pm, "name"),
+				Type:   strings.ToLower(getString(pm, "type")),
+				Server: getString(pm, "server"),
+				Port:   toInt(pm["port"]),
+			}
+			pc.Username = getString(pm, "username")
+			pc.Password = getString(pm, "password")
+			pc.Cipher = getString(pm, "cipher")
+			pc.SNI = getString(pm, "sni")
+			pc.UUID = getString(pm, "uuid")
+			pc.AlterID = toInt(pm["alterId"])
+			pc.Method = getString(pm, "method")
+			pc.URL = getString(pm, "url")
+			pc.Interval = toInt(pm["interval"])
+			pc.Default = getString(pm, "default")
+			if prs, ok := pm["proxies"].([]any); ok {
+				for _, x := range prs {
+					if s, ok := x.(string); ok {
+						pc.Proxies = append(pc.Proxies, s)
+					}
+				}
+			}
+			if alpn, ok := pm["alpn"].([]any); ok {
+				for _, x := range alpn {
+					if s, ok := x.(string); ok {
+						pc.ALPN = append(pc.ALPN, s)
+					}
+				}
+			}
+			cfg.Proxies = append(cfg.Proxies, pc)
+		}
+	}
+
+	if raw, ok := spec["groups"].([]any); ok {
+		for _, g := range raw {
+			gm, ok := g.(map[string]any)
+			if !ok {
+				continue
+			}
+			gc := config.GroupConfig{
+				Name:     getString(gm, "name"),
+				Type:     strings.ToLower(getString(gm, "type")),
+				URL:      getString(gm, "url"),
+				Interval: toInt(gm["interval"]),
+				Default:  getString(gm, "default"),
+			}
+			if prs, ok := gm["proxies"].([]any); ok {
+				for _, x := range prs {
+					if s, ok := x.(string); ok {
+						gc.Proxies = append(gc.Proxies, s)
+					}
+				}
+			}
+			cfg.Groups = append(cfg.Groups, gc)
+		}
+	}
+
+	if raw, ok := spec["rules"].([]any); ok {
+		for _, r := range raw {
+			if s, ok := r.(string); ok && strings.TrimSpace(s) != "" {
+				cfg.Rules = append(cfg.Rules, s)
+			}
+		}
+	}
+
+	if t, ok := spec["tun"].(map[string]any); ok {
+		cfg.TUN = config.TunConfig{
+			Enable:  getBool(t, "enable"),
+			Device:  getString(t, "device"),
+			MTU:     toInt(t["mtu"]),
+			Gateway: getString(t, "gateway"),
+			CIDR:    getString(t, "cidr"),
+			DNS:     getString(t, "dns"),
+		}
+	}
+	if d, ok := spec["dns"].(map[string]any); ok {
+		cfg.DNS = config.DnsConfig{
+			Enable:    getBool(d, "enable"),
+			Listen:    getString(d, "listen"),
+			Mode:      getString(d, "mode"),
+			DoHServer: getString(d, "doh-server"),
+			DoTServer: getString(d, "dot-server"),
+			FakeCIDR:  getString(d, "fake-cidr"),
+		}
+	}
+	if w, ok := spec["web"].(map[string]any); ok {
+		cfg.Web = config.WebConfig{
+			Enable:   getBool(w, "enable"),
+			Port:     toInt(w["port"]),
+			Username: getString(w, "username"),
+			Password: getString(w, "password"),
+		}
+	}
+
+	return cfg, nil
+}
+
+// toInt lives in helpers.go (shared with the rest of the agent package); it
+// handles float64/int/int64/string so gen_config's spec fields parse cleanly.
+
+func getString(m map[string]any, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func getBool(m map[string]any, key string) bool {
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return false
+}
+

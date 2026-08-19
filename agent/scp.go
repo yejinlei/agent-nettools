@@ -92,6 +92,14 @@ func FileTransfer(ctx context.Context, h HostInfo, src, dst, dir string) (int64,
 	return io.Copy(out, in)
 }
 
+// DialSSH is the exported wrapper over dialSSH so non-agent packages (e.g. the
+// `forward remote` -R mode in cmd/forward.go) can obtain an *ssh.Client using
+// the same auth + host-key policy + memory + HIL resolution as the TUI tools,
+// without depending on dialSSH's internals.
+func DialSSH(ctx context.Context, h HostInfo) (*ssh.Client, error) {
+	return dialSSH(ctx, h)
+}
+
 // dialSSH builds an *ssh.Client for h, choosing auth and host-key policy.
 func dialSSH(ctx context.Context, h HostInfo) (*ssh.Client, error) {
 	authMethods, err := authMethods(h)

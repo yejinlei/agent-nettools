@@ -2,11 +2,13 @@ package agent
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
-// toInt coerces a JSON-decoded numeric value (float64 / int / json.Number) to
-// int. Returns 0 for missing/non-numeric values — callers treat 0 as "unset".
+// toInt coerces a JSON-decoded numeric value (float64 / int / json.Number / or
+// a numeric string like "8080") to int. Returns 0 for missing/non-numeric
+// values — callers treat 0 as "unset".
 func toInt(v any) int {
 	switch n := v.(type) {
 	case float64:
@@ -15,6 +17,9 @@ func toInt(v any) int {
 		return n
 	case int64:
 		return int(n)
+	case string:
+		i, _ := strconv.Atoi(n)
+		return i
 	}
 	return 0
 }
