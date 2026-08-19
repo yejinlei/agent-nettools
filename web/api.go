@@ -68,6 +68,7 @@ func (s *WebServer) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/rules", s.handleRules)
 	mux.HandleFunc("/api/connections", s.handleConnections)
 	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/api/stats", s.handleStats)
 
 	sub, err := fs.Sub(staticFiles, ".")
 	if err != nil {

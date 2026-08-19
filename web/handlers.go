@@ -98,6 +98,18 @@ func (s *WebServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, conns)
 }
 
+// handleStats reports per-proxy traffic + connection counts. The StatsTracker
+// is fed from the proxy listener path (listener/http.go countingConns), so this
+// endpoint only shows live data once the listener is wired to the tracker via
+// the fullStart path (the standalone web command without a proxy shows zeros).
+func (s *WebServer) handleStats(w http.ResponseWriter, r *http.Request) {
+	if s.stats == nil {
+		writeJSON(w, map[string]ProxyStats{})
+		return
+	}
+	writeJSON(w, s.stats.GetStats())
+}
+
 func (s *WebServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {

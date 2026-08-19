@@ -13,12 +13,16 @@ import (
 	"time"
 
 	"agent-nettools/router"
+	"agent-nettools/web"
 )
 
 type Options struct {
 	HTTPPort   int
 	SOCKS5Port int
 	Router     *router.Router
+	// Stats optionally receives per-proxy traffic + connection accounting.
+	// nil disables accounting (no overhead).
+	Stats *web.StatsTracker
 }
 
 type Listener struct {
@@ -167,8 +171,7 @@ func (l *Listener) handleHTTP(conn net.Conn) {
 
 		req := fmt.Sprintf("%s %s HTTP/1.1\r\nHost: %s\r\n\r\n", method, target, u.Host)
 		remote.Write([]byte(req))
-		go io.Copy(conn, remote)
-		io.Copy(remote, conn)
+		l.relay(conn, remote, proxy.Name())
 		remote.Close()
 		return
 	}
@@ -184,8 +187,7 @@ func (l *Listener) handleHTTP(conn net.Conn) {
 		return
 	}
 	conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
-	go io.Copy(remote, conn)
-	io.Copy(conn, remote)
+	l.relay(conn, remote, proxy.Name())
 }
 
 func parseRequestLine(line string) (string, string, string, error) {
@@ -269,11 +271,52 @@ func (l *Listener) handleSOCKS5(conn net.Conn) {
 	resp = append(resp, byte(boundPort>>8), byte(boundPort))
 	conn.Write(resp)
 
-	go io.Copy(remote, conn)
-	io.Copy(conn, remote)
+	l.relay(conn, remote, proxy.Name())
 }
 
 func getBound(conn net.Conn) (net.IP, uint16) {
 	addr, _ := net.ResolveTCPAddr("tcp", conn.LocalAddr().String())
 	return addr.IP, uint16(addr.Port)
+}
+
+// statsConn wraps a net.Conn and reports bytes read/written to a StatsTracker
+// under proxyName. Read bytes count as "download" (remote→local), written as
+// "upload" (local→remote). No-op when tracker is nil.
+type statsConn struct {
+	net.Conn
+	stats    *web.StatsTracker
+	proxy   string
+}
+
+func (c *statsConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if n > 0 && c.stats != nil {
+		c.stats.RecordTraffic(c.proxy, 0, int64(n)) // download
+	}
+	return n, err
+}
+
+func (c *statsConn) Write(b []byte) (int, error) {
+	n, err := c.Conn.Write(b)
+	if n > 0 && c.stats != nil {
+		c.stats.RecordTraffic(c.proxy, int64(n), 0) // upload
+	}
+	return n, err
+}
+
+// relay copies bidirectionally between client and remote, optionally counting
+// bytes under proxyName. It tracks active connections on the tracker too.
+// Blocks until one direction closes; closes both ends.
+func (l *Listener) relay(client, remote net.Conn, proxyName string) {
+	if l.opts.Stats != nil {
+		l.opts.Stats.AddConnection(proxyName)
+		defer l.opts.Stats.RemoveConnection(proxyName)
+		client = &statsConn{Conn: client, stats: l.opts.Stats, proxy: proxyName}
+		remote = &statsConn{Conn: remote, stats: l.opts.Stats, proxy: proxyName}
+	}
+	done := make(chan struct{}, 2)
+	go func() { io.Copy(remote, client); done <- struct{}{}; remote.Close() }()
+	go func() { io.Copy(client, remote); done <- struct{}{}; client.Close() }()
+	<-done
+	<-done
 }

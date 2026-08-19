@@ -141,9 +141,10 @@ func fullStart(cmd *cobra.Command) error {
 	}
 
 	logRing := web.NewLogRing(1000)
-	// StatsTracker is created for parity with standalone web; not wired into
-	// the proxy path yet (a pending task).
-	_ = web.NewStatsTracker()
+	// One shared StatsTracker: the proxy listener feeds it traffic counts, the
+	// web dashboard reads it via /api/stats. Created once here so both
+	// subsystems share the same counts even though they run in goroutines.
+	stats := web.NewStatsTracker()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -175,7 +176,7 @@ func fullStart(cmd *cobra.Command) error {
 			wsrv := web.NewWebServer(web.WebConfig{
 				Enable: true, Port: cfg.Web.Port,
 				Username: cfg.Web.Username, Password: cfg.Web.Password,
-			}, logRing, web.NewStatsTracker())
+			}, logRing, stats)
 			return wsrv.Start(ctx)
 		})
 	}
@@ -196,7 +197,7 @@ func fullStart(cmd *cobra.Command) error {
 	fmt.Printf("net-redirect running (mode=%s, http=%d, socks5=%d)\n", cfg.Mode, cfg.Listen.HTTP, cfg.Listen.SOCKS5)
 	proxyErr := make(chan error, 1)
 	go func() {
-		proxyErr <- runProxy(ctx, cfg, logRing)
+		proxyErr <- runProxy(ctx, cfg, logRing, stats)
 	}()
 
 	select {

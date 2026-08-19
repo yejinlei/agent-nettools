@@ -37,8 +37,10 @@ func buildRouter(cfg *config.Config) (*router.Router, *proxy.Registry, error) {
 }
 
 // runProxy starts the HTTP/SOCKS5 listener with the configured proxies and
-// router. Blocks until ctx is cancelled or a listener fails.
-func runProxy(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {
+// router. Blocks until ctx is cancelled or a listener fails. stats, when
+// non-nil, receives per-proxy traffic + connection accounting; it is the same
+// tracker the web dashboard reads, so fullStart passes one shared instance.
+func runProxy(ctx context.Context, cfg *config.Config, logRing *web.LogRing, stats *web.StatsTracker) error {
 	rtr, _, err := buildRouter(cfg)
 	if err != nil {
 		return err
@@ -48,6 +50,7 @@ func runProxy(ctx context.Context, cfg *config.Config, logRing *web.LogRing) err
 		HTTPPort:   cfg.Listen.HTTP,
 		SOCKS5Port: cfg.Listen.SOCKS5,
 		Router:     rtr,
+		Stats:      stats,
 	})
 	if err != nil {
 		return fmt.Errorf("init listener: %w", err)

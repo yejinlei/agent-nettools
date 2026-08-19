@@ -51,7 +51,12 @@ func proxyCmd() *cobra.Command {
 		Use:   "proxy",
 		Short: "仅启动 HTTP/SOCKS5 代理监听（独立运行）",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return standaloneRun(cmd, runProxy)
+			// Standalone proxy gets its own stats tracker (no web dashboard to
+			// read it, but traffic is still counted; fullStart shares one with
+			// web, this path just keeps accounting local).
+			return standaloneRun(cmd, func(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {
+				return runProxy(ctx, cfg, logRing, web.NewStatsTracker())
+			})
 		},
 	}
 }
