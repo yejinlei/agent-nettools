@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,7 +20,7 @@ func NewHTTP(cfg Config) Proxy { return &HTTPProxy{cfg: cfg} }
 func (h *HTTPProxy) Name() string { return h.cfg.Name }
 
 func (h *HTTPProxy) Connect(ctx context.Context, addr string) (net.Conn, error) {
-	target := fmt.Sprintf("%s:%d", h.cfg.Server, h.cfg.Port)
+	target := net.JoinHostPort(h.cfg.Server, strconv.Itoa(h.cfg.Port))
 	rawConn, err := net.DialTimeout("tcp", target, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("http proxy dial %s: %w", target, err)

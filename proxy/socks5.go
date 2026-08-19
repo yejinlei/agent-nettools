@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,7 +19,7 @@ func NewSOCKS5(cfg Config) Proxy { return &SOCKS5Proxy{cfg: cfg} }
 func (s *SOCKS5Proxy) Name() string { return s.cfg.Name }
 
 func (s *SOCKS5Proxy) Connect(ctx context.Context, addr string) (net.Conn, error) {
-	target := fmt.Sprintf("%s:%d", s.cfg.Server, s.cfg.Port)
+	target := net.JoinHostPort(s.cfg.Server, strconv.Itoa(s.cfg.Port))
 	conn, err := net.DialTimeout("tcp", target, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("socks5 dial %s: %w", target, err)

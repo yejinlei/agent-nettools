@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,7 +21,7 @@ func NewVMess(cfg Config) Proxy { return &VMess{cfg: cfg} }
 func (v *VMess) Name() string { return v.cfg.Name }
 
 func (v *VMess) Connect(ctx context.Context, addr string) (net.Conn, error) {
-	target := fmt.Sprintf("%s:%d", v.cfg.Server, v.cfg.Port)
+	target := net.JoinHostPort(v.cfg.Server, strconv.Itoa(v.cfg.Port))
 	conn, err := net.DialTimeout("tcp", target, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("vmess dial %s: %w", target, err)

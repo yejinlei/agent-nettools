@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,7 +86,7 @@ func keyLen(m string) int {
 func (ss *Shadowsocks) Name() string { return ss.cfg.Name }
 
 func (ss *Shadowsocks) Connect(ctx context.Context, addr string) (net.Conn, error) {
-	target := fmt.Sprintf("%s:%d", ss.cfg.Server, ss.cfg.Port)
+	target := net.JoinHostPort(ss.cfg.Server, strconv.Itoa(ss.cfg.Port))
 	conn, err := net.DialTimeout("tcp", target, 10*time.Second)
 	if err != nil { return nil, fmt.Errorf("ss dial %s: %w", target, err) }
 

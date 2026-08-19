@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,7 +19,7 @@ func NewTrojan(cfg Config) Proxy { return &Trojan{cfg: cfg} }
 func (t *Trojan) Name() string { return t.cfg.Name }
 
 func (t *Trojan) Connect(ctx context.Context, addr string) (net.Conn, error) {
-	target := fmt.Sprintf("%s:%d", t.cfg.Server, t.cfg.Port)
+	target := net.JoinHostPort(t.cfg.Server, strconv.Itoa(t.cfg.Port))
 	rawConn, err := net.DialTimeout("tcp", target, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("trojan dial %s: %w", target, err)
