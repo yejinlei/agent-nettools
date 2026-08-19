@@ -18,6 +18,11 @@ type Config struct {
 	// DefaultMemoryPath (~/.agent-nettools/agent-memory.json) is used at runtime.
 	// Exposed so tests / non-default installs can point it elsewhere.
 	MemoryPath string `yaml:"-"`
+	// Timeout is the per-request HTTP timeout for LLM calls (seconds). 0 = 120s.
+	Timeout int `yaml:"-"`
+	// MaxRetries is how many times to retry a transient failure (429/5xx/net).
+	// 0 disables retry. Default applied in NewLLM when 0.
+	MaxRetries int `yaml:"-"`
 }
 
 func DefaultConfig() Config {
@@ -26,6 +31,12 @@ func DefaultConfig() Config {
 		Model:   "gpt-4o-mini",
 	}
 }
+
+// defaultLLMTimeout is the per-request HTTP timeout in seconds when unset.
+const defaultLLMTimeout = 120
+
+// defaultMaxRetries is the retry count for transient LLM failures when unset.
+const defaultMaxRetries = 3
 
 // DefaultSystemPrompt is the canned instruction set the agent starts with when
 // the user hasn't supplied one in config. Kept here (not a const) so callers

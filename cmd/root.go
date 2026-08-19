@@ -328,6 +328,8 @@ func tuiCmd() *cobra.Command {
 				SystemPrompt: sysPrompt,
 				ConfigPath:   cfgPath,
 				MemoryPath:   agent.DefaultMemoryPath(),
+				Timeout:      cfg.Agent.Timeout,
+				MaxRetries:   cfg.Agent.MaxRetries,
 			}
 			if agentCfg.BaseURL == "" {
 				agentCfg.BaseURL = "https://api.openai.com/v1"

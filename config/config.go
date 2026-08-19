@@ -118,6 +118,10 @@ type AgentConfig struct {
 	APIKey      string `yaml:"api-key"`
 	Model       string `yaml:"model"`
 	SystemPrompt string `yaml:"system-prompt"` // optional custom system prompt for the agent
+	// Timeout is the per-LLM-request HTTP timeout in seconds (0 = 120s default).
+	Timeout int `yaml:"timeout"`
+	// MaxRetries is transient-failure retry count for LLM calls (0 = 3 default).
+	MaxRetries int `yaml:"max-retries"`
 }
 
 func Load(path string) (*Config, error) {
@@ -207,6 +211,12 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Agent.Model == "" {
 		cfg.Agent.Model = "gpt-4o-mini"
+	}
+	if cfg.Agent.Timeout == 0 {
+		cfg.Agent.Timeout = 120
+	}
+	if cfg.Agent.MaxRetries == 0 {
+		cfg.Agent.MaxRetries = 3
 	}
 	if cfg.Agent.APIKey == "" {
 		if k := os.Getenv("AGENT_API_KEY"); k != "" {
@@ -382,6 +392,9 @@ stunvpv:
 agent:
   enable: false
   base-url: "https://api.openai.com/v1"   # any OpenAI-compatible endpoint
-  api-key: ""                             # your API key
+  api-key: ""                             # your API key (or AGENT_API_KEY env)
   model: "gpt-4o-mini"
+  # timeout: 120       # per-request HTTP timeout, seconds (default 120)
+  # max-retries: 3     # retries on 429/5xx/network (default 3)
+  # system-prompt: ""  # optional custom system prompt (default has full instructions)
 `
