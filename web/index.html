@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>net-redirect · dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;color:#e0e0e0;font-family:'JetBrains Mono','Fira Code','Courier New',monospace;font-size:13px;padding:20px}
+h1{color:#00e5ff;font-size:20px;margin-bottom:5px;text-shadow:0 0 10px rgba(0,229,255,.3)}
+h1 span{color:#4a9eff;font-size:12px;opacity:.6;margin-left:10px}
+h2{color:#00e676;font-size:14px;margin:20px 0 10px;border-bottom:1px solid #1a1a3e;padding-bottom:5px}
+.sub{color:#4a9eff;font-size:11px;opacity:.6;margin-bottom:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.card{background:#111128;border:1px solid #1a1a3e;border-radius:4px;padding:10px;transition:all .2s}
+.card:hover{border-color:#00e5ff;box-shadow:0 0 8px rgba(0,229,255,.15)}
+.card .name{color:#00e5ff;font-size:12px;font-weight:bold}
+.card .type{color:#4a9eff;font-size:10px;opacity:.5}
+.card .latency{color:#00e676;font-size:11px;margin-top:4px}
+.card .latency.dead{color:#ff5252}
+.card .badge{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.card .badge.alive{background:#00e676;box-shadow:0 0 6px #00e676}
+.card .badge.dead{background:#ff5252}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{color:#4a9eff;text-align:left;padding:6px 8px;border-bottom:1px solid #1a1a3e;font-weight:normal}
+td{padding:6px 8px;border-bottom:1px solid #111128;color:#b0b0b0}
+tr:hover td{background:#111128}
+.log-box{background:#0d0d20;border:1px solid #1a1a3e;border-radius:4px;padding:8px;height:300px;overflow-y:scroll;font-size:11px;line-height:1.6}
+.log-box::-webkit-scrollbar{width:4px}
+.log-box::-webkit-scrollbar-track{background:#0a0a1a}
+.log-box::-webkit-scrollbar-thumb{background:#1a1a3e;border-radius:2px}
+.log-entry{color:#888;border-bottom:1px solid #0a0a1a;padding:1px 0}
+.log-entry .time{color:#4a9eff;opacity:.5}
+.log-entry.INFO .msg{color:#b0b0b0}
+.log-entry.WARN .msg{color:#ff9100}
+.log-entry.ERROR .msg{color:#ff5252}
+.log-entry.DEBUG .msg{color:#4a9eff;opacity:.5}
+.status-bar{display:flex;gap:15px;flex-wrap:wrap;margin:10px 0}
+.stat{background:#111128;border:1px solid #1a1a3e;border-radius:4px;padding:8px 15px}
+.stat .val{color:#00e5ff;font-size:16px;font-weight:bold}
+.stat .label{color:#4a9eff;font-size:10px;opacity:.6}
+</style>
+</head>
+<body>
+<h1>▸ net-redirect <span>v0.1.0</span></h1>
+<div class="sub">└─ real-time proxy dashboard · API · monitor</div>
+
+<div class="status-bar" id="status-bar">
+  <div class="stat"><div class="val" id="uptime">--</div><div class="label">uptime</div></div>
+  <div class="stat"><div class="val" id="mode">--</div><div class="label">mode</div></div>
+  <div class="stat"><div class="val" id="proxy-count">0</div><div class="label">proxies</div></div>
+  <div class="stat"><div class="val" id="rule-count">0</div><div class="label">rules</div></div>
+</div>
+
+<h2>▸ Proxies</h2>
+<div class="grid" id="proxy-grid"></div>
+
+<h2>▸ Rules</h2>
+<table><thead><tr><th>Type</th><th>Payload</th><th>Proxy</th></tr></thead><tbody id="rule-table"></tbody></table>
+
+<h2>▸ Live Log</h2>
+<div class="log-box" id="log-box"></div>
+
+<script>
+const API = '/api'
+let logBuffer = []
+
+async function fetchJSON(url) {
+  try {
+    const res = await fetch(url)
+    return await res.json()
+  } catch(e) { return null }
+}
+
+async function updateStatus() {
+  const s = await fetchJSON(API + '/status')
+  if (!s) return
+  document.getElementById('uptime').textContent = s.uptime || '--'
+  document.getElementById('mode').textContent = s.mode || '--'
+  document.getElementById('proxy-count').textContent = s.proxy_count || 0
+  document.getElementById('rule-count').textContent = s.rule_count || 0
+}
+
+async function updateProxies() {
+  const proxies = await fetchJSON(API + '/proxies')
+  if (!proxies) return
+  const grid = document.getElementById('proxy-grid')
+  grid.innerHTML = proxies.map(p => `
+    <div class="card">
+      <div><span class="badge ${p.alive ? 'alive' : 'dead'}"></span><span class="name">${p.name}</span></div>
+      <div class="type">${p.type}</div>
+      <div class="latency ${p.alive ? '' : 'dead'}">${p.alive ? (p.latency / 1000000).toFixed(0) + 'ms' : 'dead'}</div>
+    </div>
+  `).join('')
+}
+
+async function updateRules() {
+  const rules = await fetchJSON(API + '/rules')
+  if (!rules) return
+  const tbody = document.getElementById('rule-table')
+  tbody.innerHTML = rules.map(r => `
+    <tr><td>${r.type}</td><td>${r.payload}</td><td>${r.proxy}</td></tr>
+  `).join('')
+}
+
+function connectSSE() {
+  const evtSource = new EventSource(API + '/logs')
+  evtSource.onmessage = (e) => {
+    try {
+      const entry = JSON.parse(e.data)
+      logBuffer.push(entry)
+      const box = document.getElementById('log-box')
+      const div = document.createElement('div')
+      div.className = 'log-entry ' + entry.level
+      div.innerHTML = `<span class="time">${entry.time}</span> [${entry.level}] <span class="msg">${escapeHtml(entry.message)}</span>`
+      box.appendChild(div)
+      box.scrollTop = box.scrollHeight
+      while (box.children.length > 200) box.removeChild(box.firstChild)
+    } catch(e) {}
+  }
+  evtSource.onerror = () => setTimeout(connectSSE, 3000)
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div')
+  d.textContent = s
+  return d.innerHTML
+}
+
+updateStatus(); updateProxies(); updateRules()
+setInterval(updateStatus, 3000)
+setInterval(updateProxies, 5000)
+setInterval(updateRules, 5000)
+connectSSE()
+</script>
+</body>
+</html>

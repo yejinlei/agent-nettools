@@ -1,0 +1,226 @@
+# agent-nettools — 一个轻量的网络代理客户端
+
+## 一句话
+
+agent-nettools 是网络代理领域的 `/etc/hosts`：一条命令，把任意 App 的网络流量重定向到你想要的目标。
+
+支持 6 种远程代理协议、3 种代理分组、7 种规则类型，外加 forward 劫持、n2n P2P 虚拟局域网、STUN/TURN 标准协议 VPN、TUN 透明代理、MITM HTTPS 拦截、Web Dashboard，以及一个用自然语言驱动全部能力的 LLM Agent TUI。
+
+## 架构
+
+![net-redirect 架构](docs/architecture.svg)
+
+```
+                    ┌─────────────────────────────────────┐
+                    │           net-redirect              │
+                    │                                     │
+  ┌──────────┐     │  ┌─────────┐  ┌──────────────────┐  │
+  │  App     │────▶│  │ HTTP    │  │  Router (rules)   │  │
+  │  系统代理 │     │  │ SOCKS5  │  │  DOMAIN/SUFFIX/  │  │
+  │  TUN     │     │  │ LISTEN  │  │  CIDR/GEOIP/MATCH│  │
+  └──────────┘     │  └─────────┘  └────────┬─────────┘  │
+                    │                       │              │
+                    │         ┌─────────────┼──────────┐   │
+                    │         ▼             ▼          ▼   │
+                    │   ┌──────────┐ ┌─────────┐ ┌──────┐ │
+                    │   │  remote  │ │ group   │ │forw.│ │
+                    │   │ proxy    │ │ selector│ │      │ │
+                    │   │ HTTP/SS/ │ │ urltest │ │      │ │
+                    │   │ Trojan/  │ │ rr      │ │      │ │
+                    │   │ VMess    │ │         │ │      │ │
+                    │   └──────────┘ └─────────┘ └──────┘ │
+                    └─────────────────────────────────────┘
+```
+
+## 功能全景
+
+| 类别 | 已实现 | 规划中 |
+|------|--------|--------|
+| 远程代理 | HTTP / HTTPS / SOCKS5 / SS / Trojan / VMess | VLESS / Reality / WireGuard |
+| 代理分组 | selector / url-test / round-robin | fallback / load-balance |
+| 代理模式 | direct / global / rule | — |
+| 规则类型 | DOMAIN / SUFFIX / KEYWORD / IP-CIDR / GEOIP / MATCH | REGEX / PORT-RANGE |
+| 本地监听 | HTTP / SOCKS5 | TProxy |
+| 特殊能力 | forward (HTTPS→HTTP 劫持) / MITM CA / TUN / n2n / STUN/TURN VPN | 端口转发 / 代理链 |
+| 运维 | ping / status / use / Web Dashboard / REST API / LLM Agent TUI | — |
+| 网络增强 | DNS 服务器 (DoH/DoT/直连) / FakeDNS | — |
+
+## 快速开始
+
+```powershell
+cd agent-nettools
+
+# 生成示例配置
+go run main.go init
+
+# 快速模式：一条命令启动
+go run main.go start --proxy ss://aes-256-gcm:password@server:port
+go run main.go start --proxy http://user:pass@server:port
+go run main.go start --proxy trojan://password@server:port?sni=example.com
+
+# 完整模式：用配置文件
+go run main.go start -c config.yml
+```
+
+## 劫持场景：App 不走代理？
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 方案              │ 条件                  │ 需要 App 配合 │ 改 hosts  │
+├───────────────────┼───────────────────────┼───────────────┼───────────┤
+│ 系统代理 + rule   │ App 走 WinINet 代理   │ ❌ 不用       │ ❌ 不用   │
+│ TUN 模式 (P0)     │ 任意 App              │ ❌ 完全不用   │ ❌ 不用   │
+│ MITM CA (P0)      │ 任意 App + hosts      │ ❌ 完全不用   │ ✅ 需要   │
+│ forward 命令      │ 任意 App + hosts      │ ❌ 完全不用   │ ✅ 需要   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+## 命令总览
+
+```
+agent-nettools [command]
+
+命令：
+  start        启动代理（-c 配置文件 / --proxy 快速模式）—— 一键全开所有启用项
+  init         生成示例配置
+  status       显示当前配置
+  ping         测试代理延迟
+  use          切换手动分组
+  forward      HTTPS→HTTP 劫持转发
+  proxy        仅启动 HTTP/SOCKS5 代理（独立运行）
+  dns          仅启动本地 DNS（独立运行）
+  web          仅启动 Web 仪表盘（独立运行）
+  tun          仅启动 TUN 设备（独立运行）
+  n2n          仅启动 n2n 虚拟局域网节点（独立运行）
+  stunvpv      仅启动 STUN/TURN VPN 节点（独立运行）
+  tui          启动 LLM Agent 交互模式（自然语言驱动所有功能）
+
+全局选项：
+  -c, --config  配置文件路径
+```
+
+每个 `proxy`/`dns`/`web`/`tun`/`n2n`/`stunvpv` 子命令都只跑一块，前台运行、`Ctrl-C` 退出——排障或按需起服务很方便。`start` 则会把所有 `enable: true` 的子服务一起拉起。
+
+详细用法见 [MANUAL.md](MANUAL.md)。
+
+### 自然语言驱动：`tui`
+
+复杂命令、配置记不住？用 `tui` 启动 LLM Agent，直接用中文描述需求：
+
+```powershell
+go run main.go tui
+```
+
+```
+你> 把 google 走 ss-1
+  ⚙️ 调用工具 switch_group(group=Auto, proxy=ss-1)
+     ↳ 已把分组 Auto 切换到 ss-1
+AI> 已把 Auto 分组切换到 ss-1，google 相关流量现在走 ss-1。
+
+你> 测一下所有代理延迟
+  ⚙️ 调用工具 ping_proxies()
+     ↳ ss-1   152ms  trojan-1  208ms
+AI> ...
+```
+
+Agent 走 OpenAI 兼容 API（任意兼容端点均可，本地/自建/官方），在 `config.yml` 的 `agent:` 段配置 `base-url`、`api-key`、`model` 即可。
+
+## 配置示例
+
+```yaml
+listen:
+  http: 7890
+  socks5: 7891
+
+mode: rule
+
+proxies:
+  - name: ss-1
+    type: ss
+    server: 1.2.3.4
+    port: 8388
+    cipher: aes-256-gcm
+    password: my-secret
+
+  - name: trojan-1
+    type: trojan
+    server: 5.6.7.8
+    port: 443
+    password: trojan-pass
+    sni: example.com
+
+  - name: forward-multica
+    type: forward
+    server: 192.168.0.77
+    port: 8080
+
+proxy-groups:
+  - name: Auto
+    type: url-test
+    proxies: [ss-1, trojan-1]
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+
+  - name: Manual
+    type: selector
+    proxies: [ss-1, trojan-1, DIRECT]
+    default: ss-1
+
+rules:
+  - DOMAIN,api.multica.ai,forward-multica
+  - DOMAIN-SUFFIX,.google.com,Auto
+  - IP-CIDR,8.8.8.8/32,DIRECT
+  - GEOIP,CN,DIRECT
+  - MATCH,DIRECT
+```
+
+## 深度功能挖掘
+
+对比 Clash / FRP / n2n / WebRTC 等工具，还有哪些功能值得做：
+
+| 优先级 | 功能 | 说明 | 来源 |
+|--------|------|------|------|
+| **P0** | TUN 模式 | 内核级网络接管，所有 App 无感走代理 | Clash |
+| **P0** | 透明代理 | 网络层劫持，App 完全无感 | Linux TProxy |
+| **P0** | 系统代理自动管理 | 一键启停 Windows 系统代理 | Clash |
+| **P0** | MITM + 自签 CA 自动安装 | HTTPS→HTTP 劫持，自动装证书 | mitmproxy |
+| P1 | 远程端口转发 | 内网端口暴露到公网 | FRP |
+| P1 | 代理链式 | proxyA → proxyB → 目标 | Clash |
+| P1 | 流量统计 + 日志 | 带宽、连接数、延迟实时统计 | Clash |
+| P1 | REST API | 外部程序控制分组切换 | Clash |
+| P2 | Web UI 仪表盘 | 可视化统计、切分组、看日志 | Clash |
+| P2 | DNS 代理 | 本地 DNS 解析，先解析再路由 | Clash |
+| P2 | VLESS / Reality | 下一代混淆协议 | V2Ray |
+| ✅P3 | P2P 隧道 | 零配置点对点，穿透 NAT | n2n / ZeroTier |
+| P3 | WebRTC / UDP 代理 | 游戏/视频流低延迟 | WebRTC |
+| P3 | WireGuard | 现代 VPN 协议 | WireGuard |
+| P3 | HTTP/3 (QUIC) | 下一代 HTTP 代理 | HTTP/3 |
+
+## 依赖
+
+| 包 | 用途 |
+|----|------|
+| github.com/spf13/cobra | CLI 框架 |
+| gopkg.in/yaml.v3 | 配置解析 |
+| golang.org/x/crypto | SS 加密 (ChaCha20-Poly1305) |
+
+## 路线图
+
+- [x] 6 种远程代理
+- [x] 3 种分组
+- [x] 规则路由
+- [x] forward 劫持
+- [x] TUN 模式 (P0)
+- [x] MITM + 自签 CA 自动安装 (P0)
+- [x] Web Dashboard + REST API (P2)
+- [x] DNS 代理 + DoH/DoT + FakeDNS (P2)
+- [x] P2P 隧道 — n2n 虚拟局域网 (P3)
+- [x] STUN/TURN 标准协议 VPN (P3)
+- [x] LLM Agent + TUI 自然语言驱动 (P3)
+- [ ] 系统代理一键管理 (P0)
+- [ ] 远程端口转发 (P1)
+- [ ] 流量统计 + 日志 (P1)
+- [ ] 代理链式 (P1)
+- [ ] VLESS / Reality (P2)
+- [ ] P2P 隧道 (P3)
+- [ ] WebRTC / UDP 代理 (P3)

@@ -1,0 +1,49 @@
+# Compiled binary / build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+agent-nettools
+/bin/
+/dist/
+
+# Go test / coverage artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Dependency directories (we commit go.sum; vendor is opt-in)
+/vendor/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local user configuration (contains secrets — do NOT commit)
+# config.yml is the live config with real API keys / proxy passwords.
+# Copy config.example.yml from `agent-nettools init` to start fresh.
+config.yml
+config.local.yml
+
+# LLM agent memory (per-user state, may hold credentials)
+.agent-nettools/
+**/agent-memory.json
+
+# MITM CA / generated certs (machine-specific, do not commit)
+ca.crt
+ca.key
+certs/
+
+# Claude Code local session state
+.claude/settings.local.json
+.claude/worktrees/
