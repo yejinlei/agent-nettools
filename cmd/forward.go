@@ -1,40 +1,198 @@
 package cmd
 
 import (
-	"crypto/tls"
+	"context"
 	"fmt"
-	"io"
 	"net"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+
+	"agent-nettools/agent"
+	"agent-nettools/config"
+	"agent-nettools/forward"
+	"agent-nettools/proxy"
 
 	"github.com/spf13/cobra"
 )
 
+// forwardCmd implements SSH-style multi-mode port forwarding. Each mode is a
+// clean sub-function in the `forward` package; this command is the thin CLI
+// dispatcher. Adding a new mode = one case here + one function in forward.
+//
+//	forward local    <listen> <dst>             (-L)   local listener → fixed dst
+//	forward remote   <sshAlias> <rListen> <dst> (-R)  listener on a remote SSH host → local dst
+//	forward dynamic  <listen>                   (-D)   local SOCKS5 listener → any dst
+//	forward tls      <listen> <dst> [sni]              HTTPS listener → plain-HTTP backend
+//
+// --proxy <name> routes the *destination dial* through a configured proxy
+// (resolved from config.yml), so forwarding can egress via SS/Trojan/etc.
+// Without --proxy, the destination is reached directly (forward.Direct).
 func forwardCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "forward <listenAddr> <dstAddr>",
-		Short: "Forward HTTPS with on-the-fly TLS termination to plain HTTP backend",
+	var proxyName string
+	cmd := &cobra.Command{
+		Use:   "forward <mode> ...",
+		Short: "SSH 风格端口转发: local(-L)/remote(-R)/dynamic(-D)/tls",
+		Long: `SSH 风格的多模式端口转发。每个模式对应 forward 包里的一个函数，新增模式只需加一个 case。
+
+  forward local   <listen> <dst>              # 本地监听 → 固定目标 (-L)
+  forward remote  <sshAlias> <rListen> <dst>   # 远程主机上的监听 → 本地目标 (-R)
+  forward dynamic <listen>                     # 本地 SOCKS5 监听 → 任意目标 (-D)
+  forward tls     <listen> <dst> [sni]         # HTTPS 监听 → 明文 HTTP 后端
+
+--proxy <name>  让目标拨号走配置文件里的指定代理（SS/Trojan 等）；不指定则直连。
+  forward local :8080 example.com:80 --proxy prod-ss
+
+示例:
+  agent-nettools forward local 127.0.0.1:3306 db.internal:3306
+  agent-nettools forward dynamic 1080
+  agent-nettools forward remote prod :9090 127.0.0.1:8080
+  agent-nettools forward tls 0.0.0.0:443 127.0.0.1:80`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) < 2 { return fmt.Errorf("usage: net-redirect forward <listenAddr> <dstAddr>") }
-			ln, err := net.Listen("tcp", args[0])
-			if err != nil { return err }
-			defer ln.Close()
-			fmt.Printf("forwarding %s (HTTPS) -> %s (HTTP)\n", args[0], args[1])
-			for {
-				conn, err := ln.Accept()
-				if err != nil { return err }
-				go handleForwardTLS(conn, args[1])
+			if len(args) == 0 {
+				return fmt.Errorf("usage: forward <local|remote|dynamic|tls> ...")
+			}
+			mode := strings.ToLower(args[0])
+			rest := args[1:]
+
+			// Build the destination dialer. --proxy wires a configured proxy's
+			// Connect into the forward.Dialer signature; nil → direct.
+			dialer, cleanup, err := buildDialer(cmd, proxyName)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go func() {
+				sigCh := make(chan os.Signal, 1)
+				signal.Notify(sigCh, os.Interrupt)
+				<-sigCh
+				fmt.Println("\n收到中断信号，停止转发…")
+				cancel()
+			}()
+
+			switch mode {
+			case "local", "-l", "-L":
+				return forwardLocal(ctx, rest, dialer)
+			case "remote", "-r", "-R":
+				return forwardRemote(ctx, rest, dialer)
+			case "dynamic", "-d", "-D":
+				return forwardDynamic(ctx, rest, dialer)
+			case "tls":
+				return forwardTLS(ctx, rest)
+			default:
+				return fmt.Errorf("unknown mode %q (want local|remote|dynamic|tls)", mode)
 			}
 		},
 	}
+	cmd.Flags().StringVar(&proxyName, "proxy", "", "目标拨号经由配置文件里的某个代理（名称）；不填则直连")
+	return cmd
 }
 
-func handleForwardTLS(client net.Conn, dstAddr string) {
-	defer client.Close()
-	tlsConn := tls.Server(client, &tls.Config{InsecureSkipVerify: true})
-	if err := tlsConn.Handshake(); err != nil { return }
-	dst, err := net.Dial("tcp", dstAddr)
-	if err != nil { return }
-	defer dst.Close()
-	go io.Copy(dst, tlsConn)
-	io.Copy(tlsConn, dst)
+// buildDialer returns a forward.Dialer. If proxyName is set, it loads config,
+// registers proxies, picks the named one, and returns a Dialer that calls
+// proxy.Connect(ctx, addr). Otherwise it returns forward.Direct (nil). The
+// cleanup func closes any proxy the dialer owns.
+//
+// This is the seam where forwarding composes with the proxy layer (and with
+// Chain, since chains are themselves proxies in the registry): to add
+// rule-based "auto" picking later, swap this function — the modes don't change.
+func buildDialer(cmd *cobra.Command, proxyName string) (forward.Dialer, func(), error) {
+	if proxyName == "" {
+		return forward.Direct, func() {}, nil
+	}
+	cfg, err := loadCfg(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	reg, err := proxy.Register(cfg.Proxies)
+	if err != nil {
+		return nil, nil, fmt.Errorf("register proxies: %w", err)
+	}
+	p, err := reg.Get(proxyName)
+	if err != nil {
+		return nil, nil, err
+	}
+	d := func(ctx context.Context, addr string) (net.Conn, error) {
+		return p.Connect(ctx, addr)
+	}
+	return d, func() { p.Close() }, nil
+}
+
+// loadCfg loads config.yml (or --config path), shared with other subcommands.
+func loadCfg(cmd *cobra.Command) (*config.Config, error) {
+	cfgPath, _ := cmd.Flags().GetString("config")
+	if cfgPath == "" {
+		cwd, _ := os.Getwd()
+		cfgPath = filepath.Join(cwd, "config.yml")
+	}
+	return config.Load(cfgPath)
+}
+
+func forwardLocal(ctx context.Context, args []string, dialer forward.Dialer) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: forward local <listen> <dst>")
+	}
+	return forward.Local(ctx, args[0], args[1], dialer)
+}
+
+func forwardDynamic(ctx context.Context, args []string, dialer forward.Dialer) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: forward dynamic <listen>")
+	}
+	return forward.Dynamic(ctx, args[0], dialer)
+}
+
+func forwardTLS(ctx context.Context, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: forward tls <listen> <dst> [sni]")
+	}
+	sni := ""
+	if len(args) >= 3 {
+		sni = args[2]
+	}
+	return forward.TLS(ctx, args[0], args[1], sni)
+}
+
+// forwardRemote implements -R: open a listener ON a remote SSH host (resolved
+// via --alias/memory/HIL like scp), tunnel connections back, and dial the
+// local dst from here. The SSH client lives for the lifetime of the forwarder.
+func forwardRemote(ctx context.Context, args []string, dialer forward.Dialer) error {
+	if len(args) < 3 {
+		return fmt.Errorf("usage: forward remote <sshAlias> <remoteListen> <localDst>")
+	}
+	alias := args[0]
+	remoteListen := args[1]
+	localDst := args[2]
+
+	h, err := resolveForwardSSHHost(ctx, alias)
+	if err != nil {
+		return err
+	}
+	sshClient, err := agent.DialSSH(ctx, h)
+	if err != nil {
+		return fmt.Errorf("ssh dial %s@%s:%d: %w", h.User, h.Host, agent.PortOf(h), err)
+	}
+	defer sshClient.Close()
+
+	// Open a TCP listener on the remote host. ssh.Client.Listen does
+	// "tcpip-forward" channel-based listening — exactly SSH -R semantics.
+	openRemote := func(ctx context.Context, addr string) (net.Listener, error) {
+		return sshClient.Listen("tcp", addr)
+	}
+	return forward.Remote(ctx, remoteListen, localDst, dialer, openRemote)
+}
+
+// resolveForwardSSHHost mirrors scp's host resolution: alias → memory → HIL,
+// so a host remembered via `scp --alias prod` is reused by `forward remote prod`.
+func resolveForwardSSHHost(ctx context.Context, alias string) (agent.HostInfo, error) {
+	mem := agent.NewMemory(agent.DefaultMemoryPath())
+	ask := agent.PromptOrSilentForCmd()
+	if ask == nil {
+		fmt.Fprintln(os.Stderr, "⚠️ stdin 非 TTY：缺少的 SSH 连接信息将无法交互询问，请先用 scp --alias 记住主机。")
+	}
+	return agent.ResolveHost(ctx, alias, "", "", "", "", 0, mem, ask)
 }
