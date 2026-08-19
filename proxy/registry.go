@@ -69,7 +69,7 @@ func Register(cfgs []config.ProxyConfig) (*Registry, error) {
 
 func isGroup(t string) bool {
 	switch t {
-	case "selector", "url-test", "urltest", "round-robin", "roundrobin":
+	case "selector", "url-test", "urltest", "round-robin", "roundrobin", "chain":
 		return true
 	}
 	return false
@@ -115,6 +115,7 @@ func NewGroup(cfg Config, reg *Registry) (Proxy, error) {
 	case "selector":         return NewSelector(cfg, reg), nil
 	case "url-test", "urltest": return NewURLTest(cfg, reg)
 	case "round-robin", "roundrobin": return NewRoundRobin(cfg, reg), nil
+	case "chain":            return NewChain(cfg, reg)
 	default: return nil, fmt.Errorf("unknown group type: %s", cfg.Type)
 	}
 }
