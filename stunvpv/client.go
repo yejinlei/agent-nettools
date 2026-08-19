@@ -266,4 +266,3 @@ func (c *Client) PeerCount() int {
 	return len(c.peers)
 }
 
-var _ = fmt.Sprintf

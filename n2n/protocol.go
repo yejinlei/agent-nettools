@@ -174,4 +174,3 @@ func unmarshalPeerList(data []byte) ([]PeerInfo, error) {
 	return peers, nil
 }
 
-var _ = net.IPv4

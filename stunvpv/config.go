@@ -1,7 +1,5 @@
 package stunvpv
 
-import "net"
-
 type Config struct {
 	Enable      bool   `yaml:"enable"`
 	Mode        string `yaml:"mode"`         // "supernode" or "client"
@@ -23,4 +21,3 @@ func DefaultConfig() Config {
 	}
 }
 
-var _ = net.IP{}

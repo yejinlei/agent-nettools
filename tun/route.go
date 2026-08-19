@@ -42,4 +42,3 @@ func GetDefaultGateway() (net.IP, error) {
 	return net.ParseIP("0.0.0.0"), nil
 }
 
-var _ = log.Println

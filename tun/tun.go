@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
-	"time"
 )
 
 type TunConfig struct {
@@ -120,4 +119,3 @@ func parsePacket(data []byte) (dstIP net.IP, dstPort int, protocol byte, err err
 	return dstIP, dstPort, protocol, nil
 }
 
-var _ = time.Second

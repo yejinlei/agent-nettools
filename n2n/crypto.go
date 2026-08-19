@@ -51,4 +51,3 @@ func (c *Crypto) Decrypt(ciphertext []byte) ([]byte, error) {
 	return aesGCM.Open(nil, nonce, ciphertext, nil)
 }
 
-var _ = io.Discard

@@ -1,7 +1,6 @@
 package router
 
 import (
-	"fmt"
 	"net"
 	"strings"
 
@@ -91,4 +90,3 @@ func geoipMatch(host string) bool {
 	return false
 }
 
-var _ = fmt.Errorf("")

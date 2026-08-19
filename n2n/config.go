@@ -1,7 +1,5 @@
 package n2n
 
-import "net"
-
 type Config struct {
 	Enable      bool   `yaml:"enable"`
 	Mode        string `yaml:"mode"`         // "supernode" or "edge"
@@ -25,4 +23,3 @@ func DefaultConfig() Config {
 	}
 }
 
-var _ = net.IP{}

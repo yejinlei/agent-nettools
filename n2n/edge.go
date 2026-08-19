@@ -289,4 +289,3 @@ func (e *Edge) PeerCount() int {
 	return len(e.peers)
 }
 
-var _ = fmt.Sprintf

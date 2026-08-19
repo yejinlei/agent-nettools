@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"sync"
 )
 
@@ -127,4 +126,3 @@ func quietRun(name string, args ...string) *exec.Cmd {
 }
 
 // Silence "unused" if runtime is ever only referenced conditionally.
-var _ = runtime.GOOS

@@ -56,4 +56,3 @@ func (d *DnsInterceptor) RealDNS() string {
 	return d.realDNS
 }
 
-var _ = &sync.Mutex{}
