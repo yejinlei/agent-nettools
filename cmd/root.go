@@ -356,6 +356,7 @@ func Execute() {
 	rootCmd.AddCommand(pingCmd())
 	rootCmd.AddCommand(useCmd())
 	rootCmd.AddCommand(forwardCmd())
+	rootCmd.AddCommand(sysproxyCmd())
 	rootCmd.AddCommand(tuiCmd())
 	// Standalone subsystem commands (each runs one component in foreground).
 	rootCmd.AddCommand(proxyCmd())
