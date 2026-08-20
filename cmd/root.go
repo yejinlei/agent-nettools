@@ -369,6 +369,10 @@ func Execute() {
 	rootCmd.AddCommand(n2nCmd())
 	rootCmd.AddCommand(stunvpvCmd())
 	rootCmd.AddCommand(wireguardCmd())
+	rootCmd.AddCommand(frpCmd())
+	rootCmd.AddCommand(tincCmd())
+	rootCmd.AddCommand(socatCmd())
+	rootCmd.AddCommand(corsproxyCmd())
 	// Standalone SSH/SFTP file copy (non-TUI tool; shares memory with the agent).
 	rootCmd.AddCommand(scpCmd())
 	if err := rootCmd.Execute(); err != nil {
