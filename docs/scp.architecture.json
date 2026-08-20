@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SCP 文件传输架构",
+    "output": "scp.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      500
+    ]
+  },
+  "components": [
+    {
+      "id": "local",
+      "type": "external",
+      "label": "本地文件",
+      "sublabel": "src 路径",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "scp-cmd",
+      "type": "backend",
+      "label": "scp 子命令",
+      "sublabel": "upload / download",
+      "tag": "scpCmd",
+      "pos": [
+        240,
+        240
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "mem",
+      "type": "database",
+      "label": "Memory",
+      "sublabel": "~/.agent-nettools",
+      "tag": "agent.Memory",
+      "pos": [
+        240,
+        400
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "ssh",
+      "type": "security",
+      "label": "SSH/SFTP",
+      "sublabel": "ssh.Dial + sftp",
+      "tag": "agent.FileTransfer",
+      "pos": [
+        560,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "remote",
+      "type": "cloud",
+      "label": "远端主机",
+      "sublabel": "alias / host:port",
+      "pos": [
+        820,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "hil",
+      "type": "external",
+      "label": "人工介入 HIL",
+      "sublabel": "缺凭证时询问",
+      "pos": [
+        560,
+        400
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "agent-tools",
+      "type": "backend",
+      "label": "Agent 工具",
+      "sublabel": "file_copy (共享)",
+      "pos": [
+        820,
+        400
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "SCP 域",
+      "wraps": [
+        "scp-cmd",
+        "mem",
+        "ssh",
+        "hil"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "local",
+      "to": "scp-cmd",
+      "label": "文件读写"
+    },
+    {
+      "id": "c2",
+      "from": "scp-cmd",
+      "to": "mem",
+      "label": "读/写 alias",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c3",
+      "from": "scp-cmd",
+      "to": "ssh",
+      "label": "dial"
+    },
+    {
+      "id": "c4",
+      "from": "ssh",
+      "to": "remote",
+      "label": "sftp transfer"
+    },
+    {
+      "id": "c5",
+      "from": "hil",
+      "to": "scp-cmd",
+      "label": "用户输入凭证",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "c6",
+      "from": "agent-tools",
+      "to": "ssh",
+      "label": "复用 FileTransfer",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "命令",
+      "items": [
+        "scp --action upload --alias prod --src ./app.log --dst /var/log/app.log",
+        "scp --action download --alias prod --src /etc/hosts --dst ./hosts",
+        "scp --host 10.0.0.5 --user root --src f.bin --dst /tmp/f.bin"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "凭证记忆",
+      "items": [
+        "首次连接缺信息会交互询问",
+        "记住到 ~/.agent-nettools",
+        "之后用 --alias 复用,无需重复输入"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "与 Agent 共享",
+      "items": [
+        "scp 子命令与 Agent file_copy 工具共享底层代码",
+        "Agent TUI 中的主机别名与 scp 完全互通",
+        "HIL 在缺凭证时向用户询问"
+      ]
+    }
+  ]
+}

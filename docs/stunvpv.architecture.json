@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "STUNVPN 组网架构",
+    "output": "stunvpv.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      520
+    ]
+  },
+  "components": [
+    {
+      "id": "client-a",
+      "type": "backend",
+      "label": "Client A",
+      "sublabel": "STUN 打洞",
+      "tag": "runSTUNVPV",
+      "pos": [
+        60,
+        140
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "client-b",
+      "type": "backend",
+      "label": "Client B",
+      "sublabel": "STUN 打洞",
+      "pos": [
+        60,
+        400
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "turn-srv",
+      "type": "cloud",
+      "label": "TURN 中继",
+      "sublabel": "stunvpv 服务端 :5000",
+      "tag": "stunvpv.Server",
+      "pos": [
+        450,
+        270
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "stun-lib",
+      "type": "security",
+      "label": "pion/stun",
+      "sublabel": "Binding 发现公网 IP",
+      "pos": [
+        450,
+        90
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "ipalloc",
+      "type": "database",
+      "label": "虚拟 IP 池",
+      "sublabel": "CIDR allocator",
+      "pos": [
+        450,
+        440
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "nat-ping",
+      "type": "security",
+      "label": "NAT 穿透",
+      "sublabel": "UDP 打洞 + 退避",
+      "pos": [
+        770,
+        140
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "turn-relay",
+      "type": "cloud",
+      "label": "TURN Relay",
+      "sublabel": "打洞失败回退",
+      "pos": [
+        770,
+        400
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "tun-bridge",
+      "type": "backend",
+      "label": "TUN 网桥",
+      "sublabel": "bridgeTUN",
+      "pos": [
+        970,
+        270
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "STUNVPN 网段",
+      "wraps": [
+        "client-a",
+        "client-b",
+        "turn-srv",
+        "stun-lib",
+        "ipalloc",
+        "nat-ping",
+        "turn-relay",
+        "tun-bridge"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "client-a",
+      "to": "turn-srv",
+      "label": "Register / Data",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2",
+      "from": "client-b",
+      "to": "turn-srv",
+      "label": "Register / Data",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c3",
+      "from": "client-a",
+      "to": "client-b",
+      "label": "UDP 打洞直连",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4",
+      "from": "stun-lib",
+      "to": "client-a",
+      "label": "STUN binding",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c5",
+      "from": "turn-srv",
+      "to": "ipalloc",
+      "label": "分配 VIP",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c6",
+      "from": "nat-ping",
+      "to": "client-b",
+      "label": "ping 探测",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c7",
+      "from": "turn-relay",
+      "to": "client-a",
+      "label": "回退转发",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c8",
+      "from": "client-a",
+      "to": "tun-bridge",
+      "label": "OnData",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "建连流程",
+      "items": [
+        "Step 1: STUN binding 发现公网地址",
+        "Step 2: 交换真实地址,尝试 UDP 打洞",
+        "Step 3: 打洞失败自动回退到 TURN Relay"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "控制协议",
+      "items": [
+        "0x01 Register → 0x02 RegisterAck",
+        "0x03 PeerList → 0x04 Data",
+        "服务端维护虚拟 IP + peer 表"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "stunvpv server :5000 --cidr=10.0.0.0/24",
+        "stunvpv client --turn=1.2.3.4:5000",
+        "bridgeTUN 自动接入 TUN"
+      ]
+    }
+  ]
+}

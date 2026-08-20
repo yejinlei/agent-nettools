@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "n2n 虚拟局域网架构",
+    "output": "n2n.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      520
+    ]
+  },
+  "components": [
+    {
+      "id": "edge-a",
+      "type": "backend",
+      "label": "Edge A",
+      "sublabel": "peer A :655",
+      "tag": "runN2N",
+      "pos": [
+        60,
+        110
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "edge-b",
+      "type": "backend",
+      "label": "Edge B",
+      "sublabel": "peer B :655",
+      "pos": [
+        60,
+        380
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "supernode",
+      "type": "cloud",
+      "label": "Supernode",
+      "sublabel": "中注册中继 :7777",
+      "tag": "Supernode",
+      "pos": [
+        450,
+        240
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "ipalloc",
+      "type": "database",
+      "label": "IP 分配器",
+      "sublabel": "CIDR 分配虚拟 IP",
+      "tag": "ipAllocator",
+      "pos": [
+        450,
+        410
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "crypto",
+      "type": "security",
+      "label": "XOR 加密",
+      "sublabel": "shared password",
+      "tag": "NewCrypto",
+      "pos": [
+        780,
+        140
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "heartbeat",
+      "type": "security",
+      "label": "Heartbeat",
+      "sublabel": "keepalive 心跳",
+      "pos": [
+        780,
+        380
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "tun-bridge",
+      "type": "backend",
+      "label": "TUN 网桥",
+      "sublabel": "bridgeTUN",
+      "pos": [
+        960,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "n2n 网络域",
+      "wraps": [
+        "edge-a",
+        "edge-b",
+        "supernode",
+        "ipalloc",
+        "crypto",
+        "heartbeat",
+        "tun-bridge"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "edge-a",
+      "to": "supernode",
+      "label": "Register + Heartbeat",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2",
+      "from": "edge-b",
+      "to": "supernode",
+      "label": "Register + Heartbeat",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c3",
+      "from": "edge-a",
+      "to": "edge-b",
+      "label": "Data 转发 (直连)",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4",
+      "from": "supernode",
+      "to": "ipalloc",
+      "label": "分配虚拟 IP",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c5",
+      "from": "crypto",
+      "to": "edge-a",
+      "label": "加密/解密",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c6",
+      "from": "heartbeat",
+      "to": "edge-b",
+      "label": "keepalive",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed"
+    },
+    {
+      "id": "c7",
+      "from": "edge-a",
+      "to": "tun-bridge",
+      "label": "OnData",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "节点类型",
+      "items": [
+        "Edge: 端点节点,通过 Supernode 中继",
+        "Supernode: 公网中继,维护 peer 表 + IP 分配",
+        "Edge 之间若 NAT 穿透成功,数据直连"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "控制协议",
+      "items": [
+        "0x01 Register → 0x02 RegisterAck",
+        "0x03 PeerList → 0x04 Data",
+        "Heartbeat 维持会话,超时剔除"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "n2n supernode :7777 --cidr=10.0.0.0/24",
+        "n2n edge --supernode=1.2.3.4:7777 --password=secret",
+        "bridgeTUN 自动接入 TUN (--no-tun 仅 UDP)"
+      ]
+    }
+  ]
+}

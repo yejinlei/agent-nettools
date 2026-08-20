@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Web 仪表盘架构",
+    "output": "web.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1000,
+      500
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "浏览器",
+      "sublabel": "仪表盘 / API",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "srv",
+      "type": "backend",
+      "label": "HTTP Server",
+      "sublabel": "web.Server",
+      "tag": "runWeb",
+      "pos": [
+        260,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Basic Auth",
+      "sublabel": "username + password",
+      "pos": [
+        260,
+        90
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "logs",
+      "type": "database",
+      "label": "LogRing",
+      "sublabel": "ring buffer 1000",
+      "tag": "web.LogRing",
+      "pos": [
+        540,
+        90
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "stats",
+      "type": "database",
+      "label": "StatsTracker",
+      "sublabel": "流量 / 连接",
+      "tag": "web.StatsTracker",
+      "pos": [
+        540,
+        380
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "/api/*",
+      "sublabel": "stats / logs / config",
+      "tag": "web.handlers",
+      "pos": [
+        800,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Web 子命令域",
+      "wraps": [
+        "srv",
+        "auth",
+        "logs",
+        "stats",
+        "api"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "browser",
+      "to": "srv",
+      "label": "HTTP"
+    },
+    {
+      "id": "c2",
+      "from": "auth",
+      "to": "srv",
+      "label": "Basic Auth 校验",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c3",
+      "from": "srv",
+      "to": "api",
+      "label": "路由"
+    },
+    {
+      "id": "c4",
+      "from": "api",
+      "to": "logs",
+      "label": "GET /api/logs",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "c5",
+      "from": "api",
+      "to": "stats",
+      "label": "GET /api/stats",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c6",
+      "from": "logs",
+      "to": "stats",
+      "label": "共享 ctx",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "接口",
+      "items": [
+        "GET /api/stats  → 总流量 / 连接数",
+        "GET /api/logs  → 最近 1000 条日志",
+        "GET /api/config → 当前配置"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "数据源",
+      "items": [
+        "LogRing: 环形缓冲区,固定 1000 条",
+        "StatsTracker: per-proxy 计数",
+        "Web 与 proxy 共享同一个 StatsTracker 实例"
+      ]
+    }
+  ]
+}

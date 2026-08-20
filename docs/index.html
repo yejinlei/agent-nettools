@@ -7,25 +7,25 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.6;min-height:100vh}
-.hero{text-align:center;padding:60px 20px 30px;background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid #1e293b}
-.hero h1{font-size:2.2em;font-weight:600;background:linear-gradient(135deg,#38bdf8,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+.hero{text-align:center;padding:48px 20px 22px;background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid #1e293b}
+.hero h1{font-size:2.1em;font-weight:600;background:linear-gradient(135deg,#38bdf8,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}
 .hero p{color:#94a3b8;font-size:1.05em}
-.hero .badge{display:inline-block;margin-top:14px;padding:4px 14px;border-radius:20px;background:#1e293b;border:1px solid #334155;font-size:0.82em;color:#94a3b8}
-.container{max-width:1000px;margin:0 auto;padding:40px 20px 80px}
-.section-title{font-size:0.85em;text-transform:uppercase;letter-spacing:0.12em;color:#64748b;margin-bottom:16px;font-weight:600}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;margin-bottom:50px}
-.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:22px;transition:transform .15s ease,border-color .15s ease;text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:10px}
+.hero .badge{display:inline-block;margin-top:12px;padding:4px 14px;border-radius:20px;background:#1e293b;border:1px solid #334155;font-size:0.82em;color:#94a3b8}
+.container{max-width:1120px;margin:0 auto;padding:28px 20px 60px}
+.section-title{font-size:0.85em;text-transform:uppercase;letter-spacing:0.12em;color:#64748b;margin-bottom:14px;font-weight:600;margin-top:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:22px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px 18px;transition:transform .15s ease,border-color .15s ease;text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:6px}
 .card:hover{transform:translateY(-2px);border-color:#38bdf8}
-.card .tag{font-size:0.75em;color:#38bdf8;font-weight:600;text-transform:uppercase;letter-spacing:0.06em}
-.card h3{font-size:1.15em;font-weight:600;color:#f1f5f9}
-.card .sub{color:#94a3b8;font-size:0.92em;min-height:2.5em}
-.card .footer{display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:10px;border-top:1px solid #334155;font-size:0.82em;color:#64748b}
+.card .tag{font-size:0.7em;color:#38bdf8;font-weight:600;text-transform:uppercase;letter-spacing:0.06em}
+.card h3{font-size:1.1em;font-weight:600;color:#f1f5f9}
+.card .sub{color:#94a3b8;font-size:0.85em;line-height:1.45}
+.card .footer{display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:6px;border-top:1px solid #334155;font-size:0.78em;color:#64748b}
 .card .arrow{color:#38bdf8;font-weight:600}
-.features-list{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px}
-.features-list ul{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 16px}
-.features-list li{color:#cbd5e1;font-size:0.95em;padding-left:16px;position:relative}
+.features-list{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:18px 22px}
+.features-list ul{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 14px}
+.features-list li{color:#cbd5e1;font-size:0.9em;padding-left:14px;position:relative}
 .features-list li::before{content:"›";position:absolute;left:0;color:#38bdf8;font-weight:700}
-.footer-bar{text-align:center;color:#475569;font-size:0.82em;padding:20px;border-top:1px solid #1e293b;margin-top:20px}
+.footer-bar{text-align:center;color:#475569;font-size:0.82em;padding:18px;border-top:1px solid #1e293b;margin-top:16px}
 a.repos{color:#38bdf8;text-decoration:none}
 a.repos:hover{text-decoration:underline}
 </style>
@@ -34,58 +34,111 @@ a.repos:hover{text-decoration:underline}
 <div class="hero">
   <h1>agent-nettools</h1>
   <p>轻量级网络代理工具集 · 交互式架构图</p>
-  <div class="badge">Go · Cobra · Archify showcase diagrams</div>
+  <div class="badge">Go · Cobra · 14 Archify showcase diagrams</div>
 </div>
 <div class="container">
 
-  <div class="section-title">▸ 功能架构图</div>
+  <div class="section-title">▸ 全景 & 核心功能</div>
   <div class="grid">
     <a class="card" href="panorama.html">
-      <span class="tag">全局</span>
-      <h3>Panorama</h3>
+      <span class="tag">全局</span><h3>Panorama</h3>
       <div class="sub">分层总览:入口 · 协议 · 隧道 · 应用,四层全栈视角</div>
       <div class="footer"><span>架构总览</span><span class="arrow">打开 →</span></div>
     </a>
+    <a class="card" href="proxy.html">
+      <span class="tag">L4/L7 代理</span><h3>Proxy</h3>
+      <div class="sub">HTTP/SOCKS5 监听 + Router + Proxy 注册表,支持 ss/trojan/vless/vmess/chain</div>
+      <div class="footer"><span>核心代理</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="dns.html">
+      <span class="tag">L7 DNS</span><h3>DNS</h3>
+      <div class="sub">本地 DNS: fakeip 段 / recursor DoH-DoT / cache,读取 config.dns.listen</div>
+      <div class="footer"><span>本地 DNS</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="web.html">
+      <span class="tag">Web</span><h3>Web Dashboard</h3>
+      <div class="sub">Basic Auth + LogRing + StatsTracker,提供 /api/stats · /api/logs · /api/config</div>
+      <div class="footer"><span>仪表盘</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="sysproxy.html">
+      <span class="tag">系统级</span><h3>SysProxy</h3>
+      <div class="sub">一键 on/off/status: Windows 注册表+netsh,Linux gsettings+env,agent 复用</div>
+      <div class="footer"><span>一键系统代理</span><span class="arrow">打开 →</span></div>
+    </a>
+  </div>
+
+  <div class="section-title">▸ 隧道 / VPN</div>
+  <div class="grid">
+    <a class="card" href="tun.html">
+      <span class="tag">L3 内核</span><h3>TUN</h3>
+      <div class="sub">Kernel TUN: Read→parsePacket→SendTo,OnData→WritePacket;wintun 走 Windows</div>
+      <div class="footer"><span>tun.Peer 接缝</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="n2n.html">
+      <span class="tag">L3 虚拟局域网</span><h3>n2n</h3>
+      <div class="sub">Supernode 中继 + Edge 端点,Register/Heartbeat/Data 三协议 + XOR 加密</div>
+      <div class="footer"><span>虚拟局域网</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="stunvpv.html">
+      <span class="tag">L3 STUN 组网</span><h3>STUNVPN</h3>
+      <div class="sub">STUN 打洞直连,失败回退 TURN Relay;pion/stun + 虚拟 IP 池</div>
+      <div class="footer"><span>NAT 穿透</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="wireguard.html">
+      <span class="tag">L3 P2P VPN</span><h3>WireGuard</h3>
+      <div class="sub">Curve25519 X25519 + Preshared Key + ChaCha20-Poly1305 AEAD + HKDF</div>
+      <div class="footer"><span>可实现 tun.Peer</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="tinc.html">
+      <span class="tag">L3 加密 Mesh</span><h3>Tinc</h3>
+      <div class="sub">Ed25519 + HKDF + ChaCha20-Poly1305 AEAD,UDP mesh VPN</div>
+      <div class="footer"><span>可实现 tun.Peer</span><span class="arrow">打开 →</span></div>
+    </a>
+  </div>
+
+  <div class="section-title">▸ 转发 & HTTP 代理</div>
+  <div class="grid">
+    <a class="card" href="forward.html">
+      <span class="tag">L4 多模式</span><h3>Forward</h3>
+      <div class="sub">SSH 风格: local(-L) / remote(-R) / dynamic(-D) / udp(-U) / tls(-T),支持 --proxy</div>
+      <div class="footer"><span>端口转发</span><span class="arrow">打开 →</span></div>
+    </a>
     <a class="card" href="frp.html">
-      <span class="tag">L4 反向代理</span>
-      <h3>FRP</h3>
+      <span class="tag">L4 反向代理</span><h3>FRP</h3>
       <div class="sub">内网穿透:frpc 注册隧道 → frps 校验 secret → 公网访问</div>
       <div class="footer"><span>双向 TCP 隧道</span><span class="arrow">打开 →</span></div>
     </a>
-    <a class="card" href="tinc.html">
-      <span class="tag">L3 加密 Mesh</span>
-      <h3>Tinc</h3>
-      <div class="sub">Ed25519 + HKDF + ChaCha20-Poly1305,UDP mesh VPN</div>
-      <div class="footer"><span>可实现 tun.Peer</span><span class="arrow">打开 →</span></div>
-    </a>
     <a class="card" href="socat.html">
-      <span class="tag">L4 端口中继</span>
-      <h3>Socat</h3>
-      <div class="sub">TCP-LISTEN → dial → 远端,纯端口转发</div>
-      <div class="footer"><span>双向 pump</span><span class="arrow">打开 →</span></div>
+      <span class="tag">L4 端口中继</span><h3>Socat</h3>
+      <div class="sub">TCP-LISTEN → dial → 远端,纯端口转发,双向 io.Copy pump</div>
+      <div class="footer"><span>端口中继</span><span class="arrow">打开 →</span></div>
     </a>
     <a class="card" href="corsproxy.html">
-      <span class="tag">L7 HTTP</span>
-      <h3>CORS Proxy</h3>
+      <span class="tag">L7 HTTP</span><h3>CORS Proxy</h3>
       <div class="sub">GET/POST /proxy 入口 → Director 重写 → ModifyResponse 注入 CORS 头</div>
       <div class="footer"><span>反向代理</span><span class="arrow">打开 →</span></div>
+    </a>
+    <a class="card" href="scp.html">
+      <span class="tag">文件</span><h3>SCP</h3>
+      <div class="sub">SSH/SFTP 上传下载,与 Agent file_copy 共享 Memory + HIL</div>
+      <div class="footer"><span>文件传输</span><span class="arrow">打开 →</span></div>
     </a>
   </div>
 
   <div class="section-title">▸ 文档索引</div>
   <div class="features-list">
     <ul>
-      <li><a class="repos" href="FEATURES.md">FEATURES.md</a> — 功能分类与状态</li>
+      <li><a class="repos" href="FEATURES.md">FEATURES.md</a> — 功能分类</li>
       <li><a class="repos" href="https://github.com/yejinlei/agent-nettools/blob/main/README.md">README.md</a> — 项目总览</li>
-      <li><a class="repos" href="frp.architecture.json">frp 源 JSON</a></li>
-      <li><a class="repos" href="tinc.architecture.json">tinc 源 JSON</a></li>
-      <li><a class="repos" href="socat.architecture.json">socat 源 JSON</a></li>
-      <li><a class="repos" href="corsproxy.architecture.json">corsproxy 源 JSON</a></li>
+      <li><a class="repos" href="https://github.com/yejinlei/agent-nettools/releases">Releases</a> — 多平台二进制</li>
+      <li><a class="repos" href="frp.architecture.json">frp</a> · <a class="repos" href="tinc.architecture.json">tinc</a> · <a class="repos" href="socat.architecture.json">socat</a> · <a class="repos" href="corsproxy.architecture.json">corsproxy</a></li>
+      <li><a class="repos" href="forward.architecture.json">forward</a> · <a class="repos" href="sysproxy.architecture.json">sysproxy</a> · <a class="repos" href="proxy.architecture.json">proxy</a> · <a class="repos" href="dns.architecture.json">dns</a> · <a class="repos" href="web.architecture.json">web</a></li>
+      <li><a class="repos" href="tun.architecture.json">tun</a> · <a class="repos" href="n2n.architecture.json">n2n</a> · <a class="repos" href="stunvpv.architecture.json">stunvpv</a> · <a class="repos" href="wireguard.architecture.json">wireguard</a> · <a class="repos" href="scp.architecture.json">scp</a></li>
     </ul>
   </div>
 </div>
 <div class="footer-bar">
-  <a class="repos" href="https://github.com/yejinlei/agent-nettools">github.com/yejinlei/agent-nettools</a> · 4 interactive architecture diagrams · rendered with Archify
+  <a class="repos" href="https://github.com/yejinlei/agent-nettools">github.com/yejinlei/agent-nettools</a> · 14 interactive architecture diagrams · rendered with Archify
 </div>
 </body>
 </html>

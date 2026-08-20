@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "本地 DNS 服务器架构",
+    "output": "dns.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      520
+    ]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "本机客户端",
+      "sublabel": "UDP/TCP :53",
+      "pos": [
+        60,
+        260
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "dns-srv",
+      "type": "backend",
+      "label": "本地 DNS",
+      "sublabel": "cache + fakeIP",
+      "tag": "runDNS",
+      "pos": [
+        280,
+        260
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "DNS Cache",
+      "sublabel": "本地缓存",
+      "tag": "dns.cache",
+      "pos": [
+        500,
+        110
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "fakeip",
+      "type": "database",
+      "label": "FakeIP 段",
+      "sublabel": "按 hash 分配 IP",
+      "tag": "dns.fake",
+      "pos": [
+        500,
+        410
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "upstream-doh",
+      "type": "cloud",
+      "label": "DoH 上游",
+      "sublabel": "HTTPS DNS",
+      "tag": "dns.resolver",
+      "pos": [
+        800,
+        110
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "upstream-dot",
+      "type": "cloud",
+      "label": "DoT 上游",
+      "sublabel": "TLS DNS",
+      "pos": [
+        800,
+        410
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "config",
+      "type": "database",
+      "label": "config.yml",
+      "sublabel": "listen / mode / DoHServer",
+      "pos": [
+        500,
+        260
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "DNS 子命令域",
+      "wraps": [
+        "dns-srv",
+        "cache",
+        "fakeip",
+        "config"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "clients",
+      "to": "dns-srv",
+      "label": "查询"
+    },
+    {
+      "id": "c2",
+      "from": "dns-srv",
+      "to": "cache",
+      "label": "读缓存",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -30
+    },
+    {
+      "id": "c3",
+      "from": "dns-srv",
+      "to": "upstream-doh",
+      "label": "recursor DoH",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c4",
+      "from": "dns-srv",
+      "to": "upstream-dot",
+      "label": "recursor DoT",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "c5",
+      "from": "dns-srv",
+      "to": "fakeip",
+      "label": "fakeip 分配",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "c6",
+      "from": "config",
+      "to": "dns-srv",
+      "label": "配置加载",
+      "fromSide": "left",
+      "toSide": "right",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模式",
+      "items": [
+        "fakeip: 解析结果用本地 FakeIP 段",
+        "recursor: 转发到 DoH/DoT 上游",
+        "direct: 本地直连 DNS"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "上游协议",
+      "items": [
+        "DoH: HTTPS (如 1.1.1.1/dns-query)",
+        "DoT: TLS (如 1.1.1.1:853)",
+        "config 中可指定 DoHServer / DoTServer"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "dns (读取 config.yml)",
+        "监听端口由 config.dns.listen 决定",
+        "支持内建 FakeIP 段与本地缓存"
+      ]
+    }
+  ]
+}

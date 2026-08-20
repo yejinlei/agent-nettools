@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "TUN 网桥架构",
+    "output": "tun.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      520
+    ]
+  },
+  "components": [
+    {
+      "id": "app",
+      "type": "external",
+      "label": "本机应用",
+      "sublabel": "经 TUN 网关",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "kernel-tun",
+      "type": "backend",
+      "label": "Kernel TUN",
+      "sublabel": "wgtun.Device",
+      "tag": "openTun",
+      "pos": [
+        230,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "read-loop",
+      "type": "backend",
+      "label": "读循环",
+      "sublabel": "TUN.Read → parsePacket",
+      "tag": "tun.Start",
+      "pos": [
+        500,
+        140
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "parse",
+      "type": "security",
+      "label": "IPv4 解析",
+      "sublabel": "dstIP / proto",
+      "tag": "parsePacket",
+      "pos": [
+        500,
+        360
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "write-loop",
+      "type": "backend",
+      "label": "写循环",
+      "sublabel": "dev.Write → 出 TUN",
+      "tag": "WritePacket",
+      "pos": [
+        760,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "peer",
+      "type": "cloud",
+      "label": "tunnel.Peer",
+      "sublabel": "n2n / stunvpv / wireguard / tinc",
+      "pos": [
+        960,
+        240
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "routes",
+      "type": "database",
+      "label": "路由表",
+      "sublabel": "CIDR → TUN 网关",
+      "pos": [
+        230,
+        400
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "TUN 网桥域",
+      "wraps": [
+        "kernel-tun",
+        "read-loop",
+        "parse",
+        "write-loop",
+        "routes"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "app",
+      "to": "kernel-tun",
+      "label": "IP 包"
+    },
+    {
+      "id": "c2",
+      "from": "kernel-tun",
+      "to": "read-loop",
+      "label": "Read"
+    },
+    {
+      "id": "c3",
+      "from": "read-loop",
+      "to": "parse",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "解析目标 IP",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4",
+      "from": "read-loop",
+      "to": "peer",
+      "label": "SendTo(dst, pkt)"
+    },
+    {
+      "id": "c5",
+      "from": "peer",
+      "to": "write-loop",
+      "label": "OnData(src, pkt)"
+    },
+    {
+      "id": "c6",
+      "from": "write-loop",
+      "to": "kernel-tun",
+      "label": "Write → 应用"
+    },
+    {
+      "id": "c7",
+      "from": "kernel-tun",
+      "to": "routes",
+      "label": "route add/del",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "数据路径",
+      "items": [
+        "out: TUN.Read → parsePacket(dst) → peer.SendTo",
+        "in: peer.OnData(src, pkt) → WritePacket → TUN.Write",
+        "peer 是 tun.Peer 接口,可插拔"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "TUN 设备",
+      "items": [
+        "Linux: /dev/net/tun (需要 CAP_NET_ADMIN)",
+        "Windows: wintun.dll (运行时需要)",
+        "MTU 默认 1500,网关 198.18.0.1"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "桥接",
+      "items": [
+        "n2n / stunvpv / wireguard 自动 bridgeTUN",
+        "--no-tun 仅走 UDP 通道",
+        "tinc 也实现 tun.Peer,待接入"
+      ]
+    }
+  ]
+}

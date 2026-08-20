@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "系统代理一键开关",
+    "output": "sysproxy.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1000,
+      500
+    ]
+  },
+  "components": [
+    {
+      "id": "cmd",
+      "type": "backend",
+      "label": "sysproxy 子命令",
+      "sublabel": "on / off / status",
+      "tag": "sysproxyCmd",
+      "pos": [
+        60,
+        220
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "win-reg",
+      "type": "database",
+      "label": "Win 注册表",
+      "sublabel": "HKCU Internet Settings",
+      "pos": [
+        380,
+        110
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "win-netsh",
+      "type": "security",
+      "label": "netsh winhttp",
+      "sublabel": "系统级代理",
+      "pos": [
+        380,
+        220
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "linux-gsettings",
+      "type": "database",
+      "label": "gsettings",
+      "sublabel": "org.gnome.system.proxy",
+      "pos": [
+        380,
+        330
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "env-vars",
+      "type": "database",
+      "label": "环境变量",
+      "sublabel": "~/.proxy.env",
+      "pos": [
+        380,
+        440
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "sys-app",
+      "type": "external",
+      "label": "本机所有应用",
+      "sublabel": "走代理出口",
+      "pos": [
+        720,
+        280
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "Agent tools",
+      "sublabel": "service 工具复用",
+      "pos": [
+        720,
+        440
+      ],
+      "size": [
+        160,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "系统代理作用域",
+      "wraps": [
+        "cmd",
+        "win-reg",
+        "win-netsh",
+        "linux-gsettings",
+        "env-vars",
+        "sys-app",
+        "agent"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "cmd",
+      "to": "win-reg",
+      "label": "写 ProxyEnable/ProxyServer",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c2",
+      "from": "cmd",
+      "to": "win-netsh",
+      "label": "netsh set proxy",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c3",
+      "from": "cmd",
+      "to": "linux-gsettings",
+      "label": "gsettings set",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c4",
+      "from": "cmd",
+      "to": "env-vars",
+      "label": "source ~/.proxy.env",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "c5",
+      "from": "win-netsh",
+      "to": "sys-app",
+      "label": "拦截所有流量",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -40
+    },
+    {
+      "id": "c6",
+      "from": "agent",
+      "to": "cmd",
+      "fromSide": "right",
+      "toSide": "right",
+      "label": "共用 sysproxy 包"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "命令",
+      "items": [
+        "sysproxy on [http://127.0.0.1:7890]",
+        "sysproxy on --no-proxy localhost",
+        "sysproxy off / status"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "平台差异",
+      "items": [
+        "Windows: 写注册表 + netsh winhttp",
+        "Linux: gsettings + ~/.proxy.env",
+        "--no-proxy 排除内网域名"
+      ]
+    }
+  ]
+}

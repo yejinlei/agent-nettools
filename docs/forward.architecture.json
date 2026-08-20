@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "端口转发多模式架构",
+    "output": "forward.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1100,
+      540
+    ]
+  },
+  "components": [
+    {
+      "id": "listen",
+      "type": "backend",
+      "label": "监听端口",
+      "sublabel": "local / dynamic / udp",
+      "tag": "forward.local",
+      "pos": [
+        100,
+        180
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "转发调度",
+      "sublabel": "按 mode 分派",
+      "tag": "forwardCmd",
+      "pos": [
+        350,
+        180
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "dialer",
+      "type": "backend",
+      "label": "拨号器",
+      "sublabel": "Direct / --proxy",
+      "tag": "forward.Dialer",
+      "pos": [
+        600,
+        180
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "target",
+      "type": "external",
+      "label": "远端服务",
+      "sublabel": "最终目标",
+      "pos": [
+        900,
+        180
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "remote-ssh",
+      "type": "cloud",
+      "label": "SSH -R 模式",
+      "sublabel": "远端主机监听",
+      "pos": [
+        350,
+        400
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "tls-term",
+      "type": "security",
+      "label": "TLS -T 模式",
+      "sublabel": "HTTPS → 明文 HTTP",
+      "pos": [
+        600,
+        400
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "forward 子命令域",
+      "wraps": [
+        "listen",
+        "router",
+        "dialer",
+        "target",
+        "remote-ssh",
+        "tls-term"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "listen",
+      "to": "router",
+      "label": "accept"
+    },
+    {
+      "id": "c2",
+      "from": "router",
+      "to": "dialer",
+      "label": "buildDialer"
+    },
+    {
+      "id": "c3",
+      "from": "dialer",
+      "to": "target",
+      "label": "直连或代理"
+    },
+    {
+      "id": "c4",
+      "from": "router",
+      "to": "remote-ssh",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "-R 远程监听",
+      "variant": "dashed"
+    },
+    {
+      "id": "c5",
+      "from": "dialer",
+      "to": "tls-term",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "-T TLS 剥离",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模式",
+      "items": [
+        "local -L: 本地监听 → 固定目标",
+        "remote -R: 远端主机监听 → 本地目标",
+        "dynamic -D: SOCKS5 中转任意目标"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "附加模式",
+      "items": [
+        "udp -U: 本地 UDP 监听 → 远端 UDP",
+        "tls -T: HTTPS 监听 → 明文 HTTP 后端",
+        "--proxy: 拨号走配置的 SS/Trojan 代理"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "forward local :8080 example.com:80",
+        "forward dynamic 1080",
+        "forward tls 0.0.0.0:443 127.0.0.1:80"
+      ]
+    }
+  ]
+}

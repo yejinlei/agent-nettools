@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "代理监听与路由架构",
+    "output": "proxy.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      500
+    ]
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "客户端流量",
+      "sublabel": "HTTP CONNECT / SOCKS5",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "listener",
+      "type": "backend",
+      "label": "监听 :7890/:7891",
+      "sublabel": "HTTP + SOCKS5",
+      "tag": "listener.New",
+      "pos": [
+        230,
+        240
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "Router",
+      "sublabel": "global / rule / direct",
+      "tag": "router.New",
+      "pos": [
+        460,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "database",
+      "label": "Proxy 注册表",
+      "sublabel": "ss / trojan / vmess ...",
+      "tag": "proxy.Register",
+      "pos": [
+        670,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "chain",
+      "type": "security",
+      "label": "Chain",
+      "sublabel": "代理串接",
+      "tag": "chain",
+      "pos": [
+        880,
+        100
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "stats",
+      "type": "database",
+      "label": "StatsTracker",
+      "sublabel": "流量统计",
+      "pos": [
+        460,
+        400
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "target",
+      "type": "cloud",
+      "label": "目标服务",
+      "sublabel": "远程上游",
+      "pos": [
+        900,
+        380
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "proxy 子命令域",
+      "wraps": [
+        "listener",
+        "router",
+        "registry",
+        "chain",
+        "stats"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "client",
+      "to": "listener",
+      "label": "TCP"
+    },
+    {
+      "id": "c2",
+      "from": "listener",
+      "to": "router",
+      "label": "Pick"
+    },
+    {
+      "id": "c3",
+      "from": "router",
+      "to": "registry",
+      "label": "解析 proxy 名"
+    },
+    {
+      "id": "c4",
+      "from": "registry",
+      "to": "target",
+      "label": "Connect(ctx, addr)"
+    },
+    {
+      "id": "c5",
+      "from": "router",
+      "to": "chain",
+      "label": "chain 子代理",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "variant": "dashed"
+    },
+    {
+      "id": "c6",
+      "from": "listener",
+      "to": "stats",
+      "label": "RecordTraffic",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "协议支持",
+      "items": [
+        "Shadowsocks / HTTP(S) / SOCKS5 / Trojan",
+        "VMess / VLESS / FRP / HTTP3 (QUIC)",
+        "Chain 支持多代理串接"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "路由模式",
+      "items": [
+        "global: 全部流量走一个代理",
+        "rule: 按域名/IP 规则分流",
+        "direct: 直连 + 走组选择器"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "proxy (读取 config.yml)",
+        "--config path/to/config.yml",
+        "配合 web 仪表盘查看流量"
+      ]
+    }
+  ]
+}

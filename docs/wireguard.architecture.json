@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "WireGuard P2P 架构",
+    "output": "wireguard.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      520
+    ]
+  },
+  "components": [
+    {
+      "id": "peer-a",
+      "type": "backend",
+      "label": "Peer A",
+      "sublabel": "private :51820",
+      "tag": "wireguard.NewPeer",
+      "pos": [
+        80,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "peer-b",
+      "type": "backend",
+      "label": "Peer B",
+      "sublabel": "private :51820",
+      "pos": [
+        860,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "udp",
+      "type": "cloud",
+      "label": "UDP 通道",
+      "sublabel": "Datagram 传输",
+      "pos": [
+        450,
+        240
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "curve25519",
+      "type": "security",
+      "label": "Curve25519 X25519",
+      "sublabel": "公私钥 DH",
+      "pos": [
+        450,
+        80
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "psk",
+      "type": "security",
+      "label": "Preshared Key",
+      "sublabel": "可选前共享密钥",
+      "pos": [
+        450,
+        410
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "aead",
+      "type": "security",
+      "label": "ChaCha20-Poly1305",
+      "sublabel": "AEAD 加密",
+      "pos": [
+        700,
+        80
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "hkdf",
+      "type": "security",
+      "label": "HKDF 派生",
+      "sublabel": "ephemeral + PSK",
+      "pos": [
+        700,
+        410
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "tun-bridge",
+      "type": "backend",
+      "label": "TUN 网桥",
+      "sublabel": "bridgeTUN",
+      "pos": [
+        1020,
+        410
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "WireGuard P2P 域",
+      "wraps": [
+        "peer-a",
+        "peer-b",
+        "udp",
+        "curve25519",
+        "psk",
+        "aead",
+        "hkdf",
+        "tun-bridge"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "peer-a",
+      "to": "udp",
+      "label": "SendTo"
+    },
+    {
+      "id": "c2",
+      "from": "udp",
+      "to": "peer-b",
+      "label": "AEAD 密文"
+    },
+    {
+      "id": "c3",
+      "from": "curve25519",
+      "to": "peer-a",
+      "label": "公私钥对",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4",
+      "from": "curve25519",
+      "to": "peer-b",
+      "label": "公私钥对",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "c5",
+      "from": "psk",
+      "to": "hkdf",
+      "label": "输入 PSK",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c6",
+      "from": "aead",
+      "to": "hkdf",
+      "label": "派生 AEAD 密钥",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "c7",
+      "from": "peer-b",
+      "to": "tun-bridge",
+      "label": "OnData",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "密钥体系",
+      "items": [
+        "Curve25519 X25519 DH 交换",
+        "32 字节公私钥 (64 hex)",
+        "可选 32 字节 Preshared Key (PSK)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "握手与数据",
+      "items": [
+        "握手: 临时公钥 + 持久公钥 → AEAD 密文",
+        "数据: [4B seq][nonce][AEAD(pkt)]",
+        "Keepalive / Handshake 超时可配置"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "wireguard (读取 wireguard 段配置)",
+        "--no-tun 仅测试 UDP 通道",
+        "自动 bridgeTUN,接入 TUN 走全栈 VPN"
+      ]
+    }
+  ]
+}
