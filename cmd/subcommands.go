@@ -105,21 +105,31 @@ func tunCmd() *cobra.Command {
 }
 
 func n2nCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "n2n",
 		Short: "仅启动 n2n 虚拟局域网节点（独立运行）",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return standaloneRun(cmd, runN2N)
+			noTun, _ := cmd.Flags().GetBool("no-tun")
+			return standaloneRun(cmd, func(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {
+				return runN2N(ctx, cfg, logRing, !noTun)
+			})
 		},
 	}
+	cmd.Flags().Bool("no-tun", false, "不将 TUN 网桥接入 n2n edge（仅中继/测试模式）")
+	return cmd
 }
 
 func stunvpvCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "stunvpv",
 		Short: "仅启动 STUN/TURN VPN 节点（独立运行）",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return standaloneRun(cmd, runSTUNVPV)
+			noTun, _ := cmd.Flags().GetBool("no-tun")
+			return standaloneRun(cmd, func(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {
+				return runSTUNVPV(ctx, cfg, logRing, !noTun)
+			})
 		},
 	}
+	cmd.Flags().Bool("no-tun", false, "不将 TUN 网桥接入 stunvpv client（仅中继/测试模式）")
+	return cmd
 }

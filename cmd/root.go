@@ -187,10 +187,10 @@ func fullStart(cmd *cobra.Command) error {
 		start("mitm", func() error { return runMITM(ctx, cfg, logRing) })
 	}
 	if cfg.N2N.Enable {
-		start("n2n", func() error { return runN2N(ctx, cfg, logRing) })
+		start("n2n", func() error { return runN2N(ctx, cfg, logRing, true) })
 	}
 	if cfg.STUNVPN.Enable {
-		start("stunvpv", func() error { return runSTUNVPV(ctx, cfg, logRing) })
+		start("stunvpv", func() error { return runSTUNVPV(ctx, cfg, logRing, true) })
 	}
 
 	// The proxy listener is the primary foreground service; it blocks here.

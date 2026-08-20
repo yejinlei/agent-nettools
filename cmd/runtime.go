@@ -36,6 +36,49 @@ func buildRouter(cfg *config.Config) (*router.Router, *proxy.Registry, error) {
 	return rtr, reg, nil
 }
 
+// bridgeTUN attaches a kernel TUN device to an overlay transport (n2n edge or
+// stunvpv client), forming the all-layer VPN data path:
+//
+//	outgoing: TUN.Read → parsePacket(dst) → peer.SendTo(dst, pkt)
+//	incoming: peer.OnData(src, pkt) → tunDev.WritePacket(pkt) → TUN.Write
+//
+// It is a no-op when TUN is disabled or useTun is false (--no-tun). The TUN
+// runs in its own goroutine so the caller's transport Start can block in the
+// foreground; both share the same ctx and stop together.
+//
+// Supernode/server modes never bridge (a relay is not a traffic endpoint).
+// OnData is a setter, so this replaces any prior (log-only) callback — no leak.
+func bridgeTUN(ctx context.Context, cfg *config.Config, useTun bool, peer tun.Peer, logRing *web.LogRing) {
+	if !useTun || !cfg.TUN.Enable {
+		return
+	}
+	tunDev := tun.NewTunDevice(tun.TunConfig{
+		Enable:  true,
+		Device:  cfg.TUN.Device,
+		MTU:     cfg.TUN.MTU,
+		Gateway: cfg.TUN.Gateway,
+		CIDR:    cfg.TUN.CIDR,
+		DNS:     cfg.TUN.DNS,
+	})
+	tunDev.SetPeer(peer)
+	peer.OnData(func(srcIP net.IP, data []byte) {
+		tunDev.WritePacket(data)
+		if logRing != nil {
+			logRing.Write(web.DEBUG, "tun: <-%s (%d bytes)", srcIP, len(data))
+		}
+	})
+	if logRing != nil {
+		logRing.Write(web.INFO, "tun: bridged to overlay (device=%s cidr=%s)", cfg.TUN.Device, cfg.TUN.CIDR)
+	}
+	go func() {
+		if err := tunDev.Start(ctx); err != nil {
+			if logRing != nil {
+				logRing.Write(web.ERROR, "tun: %v", err)
+			}
+		}
+	}()
+}
+
 // runProxy starts the HTTP/SOCKS5 listener with the configured proxies and
 // router. Blocks until ctx is cancelled or a listener fails. stats, when
 // non-nil, receives per-proxy traffic + connection accounting; it is the same
@@ -118,7 +161,10 @@ func runTUN(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error
 }
 
 // runN2N starts an n2n supernode or edge. Blocks until ctx is cancelled.
-func runN2N(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {
+// When running as an edge with TUN enabled (and not --no-tun), the edge is
+// auto-bridged to a kernel TUN for the real VPN data path. Supernodes are pure
+// relays and never get a TUN — they forward between peers, not to apps.
+func runN2N(ctx context.Context, cfg *config.Config, logRing *web.LogRing, useTun bool) error {
 	n2nCfg := n2n.Config{
 		Enable:      true,
 		Mode:        cfg.N2N.Mode,
@@ -146,11 +192,7 @@ func runN2N(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error
 		if err != nil {
 			return fmt.Errorf("n2n edge: %w", err)
 		}
-		edge.OnData(func(srcIP net.IP, data []byte) {
-			if logRing != nil {
-				logRing.Write(web.DEBUG, "n2n: data from %s (%d bytes)", srcIP, len(data))
-			}
-		})
+		bridgeTUN(ctx, cfg, useTun, edge, logRing) // registers OnData → TUN when enabled
 		if logRing != nil {
 			logRing.Write(web.INFO, "n2n: edge starting, supernode=%s", cfg.N2N.Supernode)
 		}
@@ -161,8 +203,10 @@ func runN2N(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error
 }
 
 // runSTUNVPV starts a STUN/TURN supernode (server) or client. Blocks until
-// ctx is cancelled.
-func runSTUNVPV(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {
+// ctx is cancelled. When running as a client with TUN enabled (and not
+// --no-tun), the client is auto-bridged to a kernel TUN for the real VPN data
+// path. Servers are pure relays and never get a TUN.
+func runSTUNVPV(ctx context.Context, cfg *config.Config, logRing *web.LogRing, useTun bool) error {
 	stunCfg := stunvpv.Config{
 		Enable:      true,
 		Mode:        cfg.STUNVPN.Mode,
@@ -189,11 +233,7 @@ func runSTUNVPV(ctx context.Context, cfg *config.Config, logRing *web.LogRing) e
 		if err != nil {
 			return fmt.Errorf("stunvpv client: %w", err)
 		}
-		cl.OnData(func(srcIP net.IP, data []byte) {
-			if logRing != nil {
-				logRing.Write(web.DEBUG, "stunvpv: data from %s (%d bytes)", srcIP, len(data))
-			}
-		})
+		bridgeTUN(ctx, cfg, useTun, cl, logRing) // registers OnData → TUN when enabled
 		if logRing != nil {
 			logRing.Write(web.INFO, "stunvpv: client starting, server=%s", cfg.STUNVPN.TURNServer)
 		}
