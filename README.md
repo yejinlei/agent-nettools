@@ -36,14 +36,21 @@ agent-nettools 是网络代理领域的 `/etc/hosts`：一条命令，把任意 
 
 | 类别 | 已实现 | 规划中 |
 |------|--------|--------|
-| 远程代理 | HTTP / HTTPS / SOCKS5 / SS / Trojan / VMess | VLESS / Reality / WireGuard |
-| 代理分组 | selector / url-test / round-robin | fallback / load-balance |
+| 远程代理 | HTTP / HTTPS / SOCKS5 ✦UDP / SS / Trojan / VMess / **VLESS+Reality ★uTLS** | WireGuard |
+| 代理分组 | selector / url-test / round-robin / **chain (代理链式)** | fallback / load-balance |
 | 代理模式 | direct / global / rule | — |
 | 规则类型 | DOMAIN / SUFFIX / KEYWORD / IP-CIDR / GEOIP / MATCH | REGEX / PORT-RANGE |
 | 本地监听 | HTTP / SOCKS5 | TProxy |
-| 特殊能力 | forward (HTTPS→HTTP 劫持) / MITM CA / TUN / n2n / STUN/TURN VPN | 端口转发 / 代理链 |
-| 运维 | ping / status / use / Web Dashboard / REST API / LLM Agent TUI | — |
-| 网络增强 | DNS 服务器 (DoH/DoT/直连) / FakeDNS | — |
+| 端口转发 | forward: -L local / -R remote / -D dynamic / -U udp / tls | — |
+| 系统代理 | sysproxy on/off/status (Win 注册表 + Linux gsettings) | — |
+| 透明代理 | TUN (wintun / /dev/net/tun) + 自动桥接 n2n/stunvpv | — |
+| 隧道 | n2n P2P / STUN/TURN VPN + tunnel.Peer 接缝 | WireGuard |
+| 特殊能力 | forward 劫持 / MITM CA / 流量统计 | — |
+| 运维 | ping / status / use / Web Dashboard / REST API / DNS(DoH/DoT) / LLM Agent TUI / gen_config / SCP | — |
+
+★ = uTLS 指纹伪装   ✦ = 支持 UDP (PacketProxy)
+
+完整分层速览与交互版全景图见 [MANUAL.md §2.1](MANUAL.md) 和 [docs/panorama.html](docs/panorama.html)。
 
 ## 快速开始
 
@@ -86,7 +93,8 @@ agent-nettools [command]
   status       显示当前配置
   ping         测试代理延迟
   use          切换手动分组
-  forward      HTTPS→HTTP 劫持转发
+  sysproxy     一键开关系统代理 (on/off/status)
+  forward      SSH 风格端口转发 (-L / -R / -D / -U / tls)
   proxy        仅启动 HTTP/SOCKS5 代理（独立运行）
   dns          仅启动本地 DNS（独立运行）
   web          仅启动 Web 仪表盘（独立运行）
@@ -94,6 +102,7 @@ agent-nettools [command]
   n2n          仅启动 n2n 虚拟局域网节点（独立运行）
   stunvpv      仅启动 STUN/TURN VPN 节点（独立运行）
   tui          启动 LLM Agent 交互模式（自然语言驱动所有功能）
+  scp          SSH 文件拷贝（记住 --alias）
 
 全局选项：
   -c, --config  配置文件路径
@@ -178,23 +187,21 @@ rules:
 
 对比 Clash / FRP / n2n / WebRTC 等工具，还有哪些功能值得做：
 
-| 优先级 | 功能 | 说明 | 来源 |
+| 优先级 | 功能 | 说明 | 状态 |
 |--------|------|------|------|
-| **P0** | TUN 模式 | 内核级网络接管，所有 App 无感走代理 | Clash |
-| **P0** | 透明代理 | 网络层劫持，App 完全无感 | Linux TProxy |
-| **P0** | 系统代理自动管理 | 一键启停 Windows 系统代理 | Clash |
-| **P0** | MITM + 自签 CA 自动安装 | HTTPS→HTTP 劫持，自动装证书 | mitmproxy |
-| P1 | 远程端口转发 | 内网端口暴露到公网 | FRP |
-| P1 | 代理链式 | proxyA → proxyB → 目标 | Clash |
-| P1 | 流量统计 + 日志 | 带宽、连接数、延迟实时统计 | Clash |
-| P1 | REST API | 外部程序控制分组切换 | Clash |
-| P2 | Web UI 仪表盘 | 可视化统计、切分组、看日志 | Clash |
-| P2 | DNS 代理 | 本地 DNS 解析，先解析再路由 | Clash |
-| P2 | VLESS / Reality | 下一代混淆协议 | V2Ray |
-| ✅P3 | P2P 隧道 | 零配置点对点，穿透 NAT | n2n / ZeroTier |
-| P3 | WebRTC / UDP 代理 | 游戏/视频流低延迟 | WebRTC |
-| P3 | WireGuard | 现代 VPN 协议 | WireGuard |
-| P3 | HTTP/3 (QUIC) | 下一代 HTTP 代理 | HTTP/3 |
+| **P0** | TUN 模式 | 内核级网络接管，所有 App 无感走代理 | ✅ |
+| **P0** | 系统代理一键管理 | sysproxy on/off/status (Win/Linux) | ✅ |
+| **P0** | MITM + 自签 CA 自动安装 | HTTPS→HTTP 劫持，自动装证书 | ✅ |
+| **P1** | 端口转发 -L/-R/-D/-U/tls | SSH 风格 5 模式 + --proxy | ✅ |
+| **P1** | 代理链式 | proxyA → proxyB → 目标 | ✅ |
+| **P1** | 流量统计 + 日志 | statsConn 自动计量上下行字节 + 活跃连接 | ✅ |
+| **P2** | Web UI 仪表盘 + REST API | 可视化统计、切分组、看日志 | ✅ |
+| **P2** | DNS 代理 | 本地 DNS 解析，DoH/DoT + FakeDNS | ✅ |
+| **P2** | VLESS / Reality | uTLS 指纹伪装 + X25519 + ShortID | ✅ |
+| **P3** | P2P 隧道 | n2n P2P / STUN/TURN 跨 NAT 组网 | ✅ |
+| **P3** | WebRTC / UDP 代理 | SOCKS5 UDP ASSOCIATE + forward -U | ✅ |
+| P3 | WireGuard 隧道 | tunnel.Peer 接缝已就绪，实现即插 | 🔜 |
+| P3 | HTTP/3 (QUIC) | 下一代 HTTP 代理 | 🔜 |
 
 ## 依赖
 
@@ -217,10 +224,12 @@ rules:
 - [x] P2P 隧道 — n2n 虚拟局域网 (P3)
 - [x] STUN/TURN 标准协议 VPN (P3)
 - [x] LLM Agent + TUI 自然语言驱动 (P3)
-- [ ] 系统代理一键管理 (P0)
-- [ ] 远程端口转发 (P1)
-- [ ] 流量统计 + 日志 (P1)
-- [ ] 代理链式 (P1)
-- [ ] VLESS / Reality (P2)
-- [ ] P2P 隧道 (P3)
-- [ ] WebRTC / UDP 代理 (P3)
+- [x] 系统代理一键管理 (sysproxy, P0)
+- [x] 端口转发 -L/-R/-D/-U/tls (P1)
+- [x] 流量统计 + 日志 (statsConn, P1)
+- [x] 代理链式 chain (P1)
+- [x] VLESS / Reality (uTLS 指纹, P2)
+- [x] P2P 隧道 (n2n / STUN/TURN, P3)
+- [x] WebRTC / UDP 代理 (SOCKS5 UDP ASSOCIATE + forward -U, P3)
+- [ ] WireGuard 隧道
+- [ ] HTTP/3 (QUIC) 代理

@@ -22,7 +22,8 @@ go build -o net-redirect.exe .
 | `agent-nettools status` | 显示当前配置 |
 | `agent-nettools ping` | 测试所有代理延迟 |
 | `agent-nettools use <分组> <代理>` | 切换手动分组 |
-| `agent-nettools forward <listen> <dst>` | HTTPS→HTTP 劫持 |
+| `agent-nettools sysproxy on/off/status` | 一键开关系统代理 |
+| `agent-nettools forward <模式> ...` | SSH 风格端口转发 (-L/-R/-D/-U/tls) |
 | `agent-nettools proxy` | 仅启动 HTTP/SOCKS5 代理（独立运行） |
 | `agent-nettools dns` | 仅启动本地 DNS 服务器（独立运行） |
 | `agent-nettools web` | 仅启动 Web 仪表盘（独立运行） |
@@ -30,6 +31,36 @@ go build -o net-redirect.exe .
 | `agent-nettools n2n` | 仅启动 n2n 虚拟局域网节点（独立运行） |
 | `agent-nettools stunvpv` | 仅启动 STUN/TURN VPN 节点（独立运行） |
 | `agent-nettools tui` | 启动 LLM Agent 交互模式（自然语言驱动） |
+
+---
+
+## 2.1 全景速览（分层 × 功能）
+
+工具按它作用的 **TCP/IP 层** 和 **功能分组** 两轴分布，同类命令聚在一起：
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ L7 应用层     │ MITM HTTPS 拦截 · gen_config · TUI Agent · Web 面板     │
+├────────────────────────────────────────────────────────────────────────┤
+│ L4 传输层     │ forward(-L/-R/-D/-U/tls) · 代理监听 · 代理链 chain       │
+├────────────────────────────────────────────────────────────────────────┤
+│ L3 网络层     │ TUN 透明代理 · n2n P2P · STUN/TURN VPN                  │
+├────────────────────────────────────────────────────────────────────────┤
+│ 代理协议层    │ http · https · socks5 ✦UDP · ss · trojan · vmess         │
+│             │ vless+Reality ★uTLS 指纹 · chain                         │
+├────────────────────────────────────────────────────────────────────────┤
+│ 控制面        │ 规则路由 · 分组(selector/url-test/rr) · 流量统计          │
+├────────────────────────────────────────────────────────────────────────┤
+│ 运维面        │ sysproxy · ping · status · use · init · scp · DNS · Web  │
+└────────────────────────────────────────────────────────────────────────┘
+   ★ = uTLS 指纹伪装   ✦ = 支持 UDP (PacketProxy)
+```
+
+LLM + Agent 是横贯所有层的能力：一句话驱动上面任意层。完整交互版图表见 `docs/panorama.html`。速记口诀：
+
+> **L7 改应用，L4 转端口，L3 接网卡，协议可换，路由决定走谁，运维看面板。**
+
+详细分类见 `docs/FEATURES.md`。
 
 ---
 
@@ -45,9 +76,69 @@ go build -o net-redirect.exe .
 | `ss` | server, port, cipher, password | — |
 | `trojan` | server, port, password | sni, alpn |
 | `vmess` | server, port, uuid | alterId, method |
+| `vless` | server, port, uuid | sni, alpn, public-key, short-id, fingerprint |
 | `forward` | server, port | sni |
 
-### 3.2 代理分组 (proxy-groups)
+### 3.2 可插拔协议一览
+
+所有代理统一实现 `proxy.Proxy`（`Connect/Latency/Close`）；支持 UDP 的额外实现 `proxy.PacketProxy`（`ConnectUDP`）。
+
+| 协议 | 类型字段 | UDP | 特色 |
+|------|---------|-----|------|
+| HTTP | `http` | — | 明文 CONNECT |
+| HTTPS | `https` | — | TLS CONNECT |
+| SOCKS5 | `socks5` | ✅ | CONNECT + UDP ASSOCIATE |
+| Shadowsocks | `ss` | — | ChaCha20-Poly1305 等 |
+| Trojan | `trojan` | — | TLS 伪装 HTTPS |
+| VMess | `vmess` | — | UUID + AEAD |
+| **VLESS + Reality** | `vless` | — | uTLS 指纹伪装 + X25519 + ShortID |
+| Chain（链式） | `chain` | 继承 | 多跳串联 |
+
+### 3.2.1 VLESS + Reality
+
+Reality 让 TLS 握手看起来像真实浏览器（Chrome/Firefox/iOS/Edge/Random 的 ClientHello），绕过 SNI / JA3 指纹封锁：
+
+```yaml
+- name: vless-reality
+  type: vless
+  server: example.com
+  port: 443
+  uuid: 你的-uuid
+  public-key: 服务器curve25519公钥(base64url,43字符)
+  short-id: 8位hex
+  fingerprint: chrome      # chrome/firefox/ios/edge/random
+  sni: example.com
+```
+
+`fingerprint` 为空 → 走普通 crypto/tls；非空 → 走 uTLS 指纹路径，配合 `public-key`/`short-id` 进行 X25519 密钥交换认证。
+
+### 3.2.2 代理链式 (Chain)
+
+```yaml
+- name: hop
+  type: chain
+  proxies: [ss-1, trojan-1]   # ss-1 → trojan-1 → 目标
+```
+
+`Connect` 逐段拨号：经 p[0] 连到 p[1] 的服务器，……最后连到目标。链本身是一个 Proxy，可被规则 / 转发 / 分组像普通代理一样引用。
+
+### 3.2.3 TUN 透明代理
+
+让任意 App 无感走代理（内核级接管，虚拟网卡读写真实 IP 包）：
+
+```yaml
+tun:
+  enable: true
+  device: "net-redirect"
+  mtu: 1500
+  gateway: "198.18.0.1"
+  cidr: "198.18.0.0/16"
+  dns: "198.18.0.2"
+```
+
+在 `n2n` 或 `stunvpv` 的 edge/client 模式下把 `tun.enable: true`，TUN 会自动桥接到隧道（tunnel.Peer 接缝）。Windows 需先下载 `wintun.dll` 到程序目录。
+
+### 3.3 代理分组 (proxy-groups)
 
 | 类型 | 行为 |
 |------|------|
@@ -55,7 +146,7 @@ go build -o net-redirect.exe .
 | `url-test` | 自动选最快 |
 | `round-robin` | 轮询 |
 
-### 3.3 规则 (rules)
+### 3.4 规则 (rules)
 
 | 类型 | 示例 |
 |------|------|
@@ -336,6 +427,229 @@ Byte 8+:  载荷数据
 
 ---
 
+## 7.7 端口转发（SSH 风格，5 种模式）
+
+`forward` 子命令提供 SSH 同款的多模式端口转发，每个模式对应 `forward` 包里的一个函数，扩展新模式只需加一个 case。
+
+```
+agent-nettools forward <模式> [参数...] [--proxy <name>]
+```
+
+**统一选项**：`--proxy <name>` 让"目标拨号"走配置文件里的某个代理（SS / Trojan / SOCKS5 等）；不指定则直连。UDP 模式下该代理必须支持 UDP（目前仅 SOCKS5 通过 `PacketProxy` 支持）。
+
+### 7.7.1 本地转发 (-L)
+
+```
+agent-nettools forward local <listen> <dst>
+```
+
+本地监听 → 固定目标。等价于 `ssh -L`。
+
+```
+agent-nettools forward local 127.0.0.1:3306 db.internal:3306 --proxy prod-ss
+```
+
+应用场景：把远程数据库端口暴露到本机；`--proxy prod-ss` 让出去的那一段经代理链式，常用于从本地访问经代理才能到达的内网服务。
+
+### 7.7.2 远程转发 (-R)
+
+```
+agent-nettools forward remote <sshAlias> <remoteListen> <localDst>
+```
+
+通过 SSH 隧道在远端主机上开监听，把远端的请求转回本机目标。复用 `scp` 已记住的主机 alias（`scp --alias prod ...`）。
+
+```
+agent-nettools forward remote prod :9090 127.0.0.1:8080
+```
+
+应用场景：从公网机器回连内网开发机、暴露本地调试服务。
+
+### 7.7.3 动态转发 (-D)
+
+```
+agent-nettools forward dynamic <listen>
+```
+
+本地 SOCKS5 监听，拨号任意目标。等价于 `ssh -D`。
+
+```
+agent-nettools forward dynamic 1080
+```
+
+应用场景：作为临时 SOCKS5 代理供应用使用。
+
+### 7.7.4 UDP 转发 (-U)
+
+```
+agent-nettools forward udp <listen> <dst> [--proxy <name>]
+```
+
+本地 UDP 监听 → 固定 UDP 目标（DNS / QUIC 等）。
+
+```
+agent-nettools forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
+```
+
+`--proxy` 指定 SOCKS5 代理 → 走该代理的 UDP ASSOCIATE 出去；不指定则本机直连 UDP。应用场景：把本机 DNS 经代理出去；走 QUIC 的服务做 UDP 隧道。
+
+### 7.7.5 TLS 终止 (tls)
+
+```
+agent-nettools forward tls <listen> <dst> [sni]
+```
+
+HTTPS 监听 → 明文 HTTP 后端（MITM / 流量观察）。
+
+```
+agent-nettools forward tls 0.0.0.0:443 127.0.0.1:80
+```
+
+配合 `mitm` 段的自签 CA 可拦截并记录 App 明文流量（详见 4.1 场景）。
+
+---
+
+## 7.8 系统代理一键开关 (sysproxy)
+
+```
+agent-nettools sysproxy on          [http://127.0.0.1:7890] [--no-proxy host,host]
+agent-nettools sysproxy off
+agent-nettools sysproxy status
+```
+
+| 平台 | 实际写入 |
+|------|---------|
+| Windows | 注册表 `HKCU\...\Internet Settings` (ProxyEnable/ProxyServer) + `netsh winhttp` |
+| Linux | `gsettings org.gnome.system.proxy` + 生成 `~/.proxy.env` 供 `source` |
+
+`on` 不带地址时默认取 `config.yml` 的 HTTP 监听端口。`--no-proxy` 指定代理排除主机（如 `localhost,127.0.0.1`）。
+
+应用场景：一键让本机所有 App 走 agent-nettools 的代理（浏览器也走）；配合 `forward dynamic` 或 `start` 使用。
+
+---
+
+## 7.9 TUN 透明代理 + tunnel.Peer 接缝
+
+让"任意 App 无感走代理"的根：在内核开一个虚拟网卡，读写真实 IP 包。
+
+### 7.9.1 分层
+
+```
+App ──► 内核 TUN (wintun / /dev/net/tun)
+          │  Read: parsePacket → 拿到 dstIP
+          ▼
+     tunnel.Peer 接缝
+   ┌───────┴────────┐
+   ▼                ▼
+ n2n.Edge       stunvpv.Client    (未来: WireGuard …)
+   │                │
+   ▼                ▼
+P2P / TURN 中继 → 对端 TUN → 对端 App
+```
+
+`tunnel.Peer` 是一个最小接缝接口（`OnData`/`SendTo`/`VirtualIP`），位于 `tun/peer.go`。它让 TUN 不依赖任何具体隧道包——**新增 WireGuard 等只需实现 Peer**。这是"设计好架构、方便后续添加功能"的关键点。
+
+### 7.9.2 自动桥接
+
+在 `n2n` / `stunvpv` 的 edge/client 模式下，把 `tun.enable: true`，启动时会自动：
+
+1. 创建 TUN 设备 + 设置 MTU + 添加路由（把 overlay CIDR 指向虚拟网关）
+2. `TunDevice.SetPeer(edge|client)`：把隧道接上接缝
+3. `edge.OnData(func(src, data){ tun.WritePacket(data) })`：对端包 → 写回 TUN
+4. TUN 读循环：收到真实 IP 包 → 解析 dstIP → `peer.SendTo(dstIP, data)` 发往对端
+
+```yaml
+# 示例：两台不同 NAT 的机器互访内网
+tun:
+  enable: true
+n2n:
+  enable: true
+  mode: "edge"
+  supernode: "1.2.3.4:7654"
+  community: "my-team"
+```
+
+启动后 `ping <对端虚拟IP>` 即通。可用 `--no-tun` 关闭桥接，单独跑 relay。Windows 需先放置 `wintun.dll`。
+
+---
+
+## 7.10 流量统计
+
+`listener` 的 relay 路径自动生效：`Listener.Options.Stats` 接一个 `web.StatsTracker`，每个连接在 relay 时通过 `statsConn` 双向计数（读=下载，写=上传），同时跟踪活跃连接数。业务代码无需改动。
+
+统计可通过 Web 面板 / REST 端点读取（`/api/stats`）。
+
+```
+┌──────────────┐       ┌──────────────┐
+│   client     │◄─────►│   remote     │
+│    (statsConn)       (statsConn)    │
+└──────┬───────┘       └──────┬───────┘
+       │                       │
+       └───────── StatsTracker ─┘
+                  │
+               web /api/stats
+```
+
+---
+
+## 7.11 LLM Agent 的 gen_config 工具
+
+Agent 内可用的 `gen_config` 工具允许用户用自然语言描述想要的配置，由模型把描述转成结构化 `spec`，工具负责拼装 + 校验 + 落盘——**不是手写 YAML**。
+
+| 工具 | 区别 |
+|------|------|
+| `get_config` | 读取当前完整配置 |
+| `update_config` | 用完整新 YAML 覆写（需要完整 YAML） |
+| `gen_config` | 从结构化 spec 生成一份完整可用配置 |
+
+示例对话：
+
+```
+你> 给我配一个 8080 端口的 ss 代理，自动选最快，google 走它
+  ⚙️ 调用工具 gen_config(spec={
+       "listen":{"http":8080},
+       "mode":"rule",
+       "proxies":[{"name":"ss1","type":"ss","server":"a.com","port":8388,
+                    "cipher":"aes-256-gcm","password":"pw"}],
+       "groups":[{"name":"Auto","type":"url-test","proxies":["ss1"],
+                  "url":"http://www.gstatic.com/generate_204","interval":300}],
+       "rules":["GEOIP,CN,DIRECT","DOMAIN-SUFFIX,.google.com,Auto","MATCH,Auto"]
+     }, path="config.yml")
+     ↳ 配置已写入 config.yml（校验通过）
+AI> 已生成，可 `start -c config.yml` 启动。
+```
+
+---
+
+## 7.12 VLESS + Reality 实战场景
+
+VLESS+Reality 让代理流量伪装成普通 HTTPS 访问真实网站（Chrome/Firefox/Edge/iOS 的 ClientHello），绕过 SNI / JA3 指纹封锁。
+
+```yaml
+proxies:
+  - name: vless-r
+    type: vless
+    server: example.com
+    port: 443
+    uuid: 你的-uuid
+    public-key: <base64url, 43字符>
+    short-id: 12345678
+    fingerprint: chrome
+    sni: example.com
+rules:
+  - MATCH, vless-r
+```
+
+`fingerprint` 取值：`chrome` / `firefox` / `ios` / `edge` / `random`。配合 `--proxy vless-r` 用于 `forward` 让出站流量走 Reality。
+
+---
+
+## 7.13 全景图
+
+`docs/panorama.html` 是一个交互版的工具全景图（archify 生成，暗色/亮色主题可切换），纵轴是 TCP/IP 层，横轴是功能分组，同类命令聚在一起，LLM+Agent 用独立的 tall 列横贯所有层。双击可打开查看。配套的静态分层文档在 `docs/FEATURES.md`。
+
+---
+
 ## 8. LLM Agent + TUI（自然语言驱动）
 
 复杂命令、配置记不住？`tui` 子命令启动一个 LLM Agent 交互模式，直接用自然语言描述需求，Agent 自动调用底层工具完成。
@@ -377,6 +691,10 @@ AI> ...
   ⚙️ 调用工具 switch_group(group=Auto, proxy=ss-1)
 AI> 已切换。
 
+你> 给我配一个 8080 端口的 ss 代理，自动选最快
+  ⚙️ 调用工具 gen_config(spec={...})
+     ↳ 配置已写入 config.yml
+
 你> exit
 ```
 
@@ -386,10 +704,11 @@ AI> 已切换。
 |------|------|
 | `get_config` | 读取当前完整配置 (YAML) |
 | `update_config` | 用完整新 YAML 覆盖配置（写入前自动校验） |
+| `gen_config` | 从结构化 spec 生成一份完整可用配置（不是手写 YAML） |
 | `ping_proxies` | 测试所有代理延迟 |
 | `switch_group` | 切换 selector 分组到指定代理 |
 | `add_rule` | 在规则列表开头插入一条路由规则 |
-| `service` | 启动/停止单个子服务：`proxy`/`dns`/`web`/`tun`/`n2n`/`stunvpv`，或 `status` 查看运行状态。后台拉起与独立子命令同名的进程，互不干扰 |
+| `service` | 启动/停止单个子服务：`proxy`/`dns`/`web`/`tun`/`n2n`/`stunvpv`，或 `status` 查看运行状态 |
 | `list_commands` | 列出所有 CLI 子命令 |
 
 Agent 最多自动调用 8 轮工具；`exit`/`quit`/`q` 或 Ctrl-D 退出。
@@ -449,5 +768,7 @@ agent-nettools stunvpv -c config.yml
 
 - **端口占用**：`taskkill //F //FI "PID eq <pid>"`
 - **规则不生效**：从上到下顺序匹配，第一条命中生效
-- **App 不走代理**：现代 App 需要 TUN 模式（规划中）
+- **App 不走代理**：开 `tun.enable: true` + 启动 n2n/stunvpv，TUN 会接管；或 `sysproxy on`
 - **tui 报 no api-key**：在 `config.yml` 的 `agent.api-key` 填 key，或 `export AGENT_API_KEY`
+- **Windows TUN 启动失败**：下载 `wintun.dll` 放到程序目录
+- **UDP 转发要经过代理**：用 `forward udp <listen> <dst> --proxy <socks5代理名>`，SOCKS5 的 UDP ASSOCIATE 才会接管
