@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Tinc 加密 Mesh 架构",
+    "output": "tinc.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      960,
+      520
+    ]
+  },
+  "components": [
+    {
+      "id": "node-a",
+      "type": "backend",
+      "label": "Node A",
+      "sublabel": "peer A :655",
+      "tag": "Peer.Start",
+      "pos": [
+        80,
+        150
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "node-b",
+      "type": "backend",
+      "label": "Node B",
+      "sublabel": "peer B :655",
+      "pos": [
+        760,
+        150
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "udp-mesh",
+      "type": "cloud",
+      "label": "UDP Mesh",
+      "sublabel": "Datagram 广播",
+      "pos": [
+        410,
+        150
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "ed25519",
+      "type": "security",
+      "label": "Ed25519 密钥",
+      "sublabel": "128 hex 私钥",
+      "pos": [
+        80,
+        380
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "hkdf",
+      "type": "security",
+      "label": "HKDF 派生",
+      "sublabel": "pub + SHA256(CA)",
+      "pos": [
+        310,
+        380
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "aead",
+      "type": "security",
+      "label": "ChaCha20-Poly1305",
+      "sublabel": "AEAD 加解密",
+      "pos": [
+        550,
+        380
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Tinc Mesh 网段",
+      "wraps": [
+        "node-a",
+        "node-b",
+        "udp-mesh",
+        "ed25519",
+        "hkdf",
+        "aead"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "node-a",
+      "to": "udp-mesh",
+      "label": "SendTo"
+    },
+    {
+      "id": "c2",
+      "from": "udp-mesh",
+      "to": "node-b",
+      "label": "AEAD 数据"
+    },
+    {
+      "id": "c3",
+      "from": "udp-mesh",
+      "to": "aead",
+      "label": "解密",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c4",
+      "from": "ed25519",
+      "to": "hkdf",
+      "label": "派生会话密钥"
+    },
+    {
+      "id": "c5",
+      "from": "hkdf",
+      "to": "aead",
+      "label": "密钥输入"
+    },
+    {
+      "id": "c6",
+      "from": "ed25519",
+      "to": "node-a",
+      "label": "公私钥对",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          150,
+          380
+        ],
+        [
+          150,
+          280
+        ],
+        [
+          150,
+          210
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "密钥体系",
+      "items": [
+        "每节点持有 ed25519 公私钥 (128 hex)",
+        "shared CA secret 通过 HKDF-SHA256 派生 AEAD 密钥",
+        "info 前缀为 tinc-session,防混淆"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "数据路径",
+      "items": [
+        "hello 包 0x10 + 32B 公钥用于发现",
+        "数据 0x01 + 12B nonce + AEAD 密文",
+        "keepalive 0x80 定时维持,--keepalive 秒数"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "tinc --private=HEX --ca=secret --listen=:655 --endpoint=peer:655",
+        "实现 tun.Peer,可接入 TUN 走全栈 VPN"
+      ]
+    }
+  ]
+}

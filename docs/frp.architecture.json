@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "FRP 反向代理架构",
+    "output": "frp.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1000,
+      500
+    ]
+  },
+  "components": [
+    {
+      "id": "frpc",
+      "type": "backend",
+      "label": "frp client",
+      "sublabel": "内网侧代理",
+      "tag": "RunClient",
+      "pos": [
+        100,
+        140
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "frps",
+      "type": "backend",
+      "label": "frp server",
+      "sublabel": "公网中继 :7000",
+      "tag": "RunServer",
+      "pos": [
+        430,
+        140
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "remote-cl",
+      "type": "external",
+      "label": "远程客户端",
+      "sublabel": "公网访问者",
+      "pos": [
+        780,
+        140
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "local-svc",
+      "type": "database",
+      "label": "内网服务",
+      "sublabel": "任意 TCP 端口",
+      "pos": [
+        100,
+        360
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Secret 校验",
+      "sublabel": "0x01 OK / 0x02 ERR",
+      "pos": [
+        430,
+        360
+      ],
+      "size": [
+        180,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "FRP 隧道域",
+      "wraps": [
+        "frpc",
+        "frps",
+        "remote-cl",
+        "local-svc",
+        "auth"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "frpc",
+      "to": "frps",
+      "label": "注册隧道"
+    },
+    {
+      "id": "c2",
+      "from": "frpc",
+      "to": "local-svc",
+      "label": "dial 内网端口",
+      "labelDy": 110
+    },
+    {
+      "id": "c3",
+      "from": "remote-cl",
+      "to": "frps",
+      "label": "TCP 连接"
+    },
+    {
+      "id": "c4",
+      "from": "frps",
+      "to": "auth",
+      "label": "secret 比对",
+      "labelDy": 110
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "握手协议",
+      "items": [
+        "客户端先发 [4B BE secretLen][secret][0x01][2B BE port]",
+        "服务端返回 0x01=OK 或 0x02=ERR",
+        "secret 不匹配直接拒接"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "数据转发",
+      "items": [
+        "frps 在远程与本地之间建立双向流",
+        "frpc 监听本地端口,经 frps 回传公网",
+        "io.Copy 双向,一端关闭整条隧道拆除"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "用法",
+      "items": [
+        "frp server --secret=xxx --port=7000 --target=127.0.0.1",
+        "frp client 22 22 --server=frps:7000 --secret=xxx"
+      ]
+    }
+  ]
+}

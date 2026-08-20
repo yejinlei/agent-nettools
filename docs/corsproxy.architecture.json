@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CORS Proxy 架构",
+    "output": "corsproxy.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "浏览器前端",
+      "sublabel": "跨域请求",
+      "pos": [
+        60,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "endpoint",
+      "type": "frontend",
+      "label": "/proxy 入口",
+      "sublabel": "GET/POST",
+      "tag": "corsMux",
+      "pos": [
+        280,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "preflight",
+      "type": "security",
+      "label": "OPTIONS 预检",
+      "sublabel": "204 + CORS 头",
+      "pos": [
+        280,
+        400
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "director",
+      "type": "backend",
+      "label": "Request Director",
+      "sublabel": "URL + Host 重写",
+      "pos": [
+        520,
+        220
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "injector",
+      "type": "backend",
+      "label": "Header 注入",
+      "sublabel": "Allow-Origin: *",
+      "pos": [
+        520,
+        400
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "upstream",
+      "type": "cloud",
+      "label": "上游 HTTP 服务",
+      "sublabel": "目标 URL",
+      "pos": [
+        800,
+        220
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "health",
+      "type": "external",
+      "label": "/health",
+      "sublabel": "健康检查",
+      "pos": [
+        800,
+        400
+      ],
+      "size": [
+        160,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "CORS Proxy 服务",
+      "wraps": [
+        "endpoint",
+        "preflight",
+        "director",
+        "injector"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": "browser",
+      "to": "endpoint",
+      "label": "请求",
+      "variant": "emphasis",
+      "labelDy": 40
+    },
+    {
+      "id": "c2",
+      "from": "endpoint",
+      "to": "preflight",
+      "label": "OPTIONS 预检",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c3",
+      "from": "endpoint",
+      "to": "director",
+      "label": "解析 url"
+    },
+    {
+      "id": "c4",
+      "from": "director",
+      "to": "upstream",
+      "label": "反向代理请求"
+    },
+    {
+      "id": "c5",
+      "from": "upstream",
+      "to": "injector",
+      "label": "ModifyResponse",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "c6",
+      "from": "injector",
+      "to": "browser",
+      "label": "CORS 头 + 响应",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口协议",
+      "items": [
+        "GET /proxy?url=TARGET",
+        "POST /proxy 携带 {url: TARGET} JSON 体",
+        "自动校验 http:// 或 https:// 前缀"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "请求重写",
+      "items": [
+        "Director 强制 req.URL 和 Host 指向上游",
+        "注入 X-Forwarded-For 保留客户端来源",
+        "剥离 Origin / Referer 防止欺骗"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "CORS 处理",
+      "items": [
+        "ModifyResponse 删除原 CORS 头后注入 *",
+        "OPTIONS 预检直接 204 + Allow-Origin: *",
+        "/health 返回 {status:ok} 供监控"
+      ]
+    }
+  ]
+}

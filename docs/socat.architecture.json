@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Socat 端口中继架构",
+    "output": "socat.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "client", "type": "external", "label": "客户端", "sublabel": "TCP 发起方", "pos": [60, 220], "size": [130, 60] },
+    { "id": "listen", "type": "backend", "label": "TCP-LISTEN", "sublabel": "本地监听端口", "tag": "socatRelay", "pos": [280, 220], "size": [150, 60] },
+    { "id": "relay", "type": "backend", "label": "Socat 中继", "sublabel": "双向 pump", "pos": [540, 220], "size": [140, 60] },
+    { "id": "dial", "type": "backend", "label": "TCP 拨号", "sublabel": "net.Dial 远端", "tag": "dialContext", "pos": [740, 220], "size": [140, 60] },
+    { "id": "remote", "type": "cloud", "label": "远端服务", "sublabel": "TCP:host:port", "pos": [950, 220], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Socat 中继域", "wraps": ["client", "listen", "relay", "dial", "remote"] }
+  ],
+  "connections": [
+    { "id": "c1", "from": "client", "to": "listen", "label": "TCP 连接", "variant": "emphasis" },
+    { "id": "c2", "from": "listen", "to": "relay", "label": "accept" },
+    { "id": "c3", "from": "relay", "to": "dial", "label": "dial addr2" },
+    { "id": "c4", "from": "dial", "to": "remote", "label": "TCP 连接", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "地址格式", "items": ["TCP-LISTEN:<port> 作为 addr1", "TCP:<host>:<port> 作为 addr2", "命令 socat <addr1> <addr2>"] },
+    { "dot": "emerald", "title": "转发原理", "items": ["accept 本地连接后,立即 dial 远端", "两条 goroutine 各走一个方向 io.Copy", "任一端关闭即结束本次连接"] }
+  ]
+}
