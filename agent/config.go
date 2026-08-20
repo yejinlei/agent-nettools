@@ -1,28 +1,55 @@
 package agent
 
+import (
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
 // Config configures the LLM-backed agent.
 type Config struct {
-	// Enable toggles the agent on.
 	Enable bool `yaml:"enable"`
-	// BaseURL is the OpenAI-compatible API base URL, e.g. "https://api.openai.com/v1".
 	BaseURL string `yaml:"base-url"`
-	// APIKey is the bearer token for the API.
 	APIKey string `yaml:"api-key"`
-	// Model is the model id to call, e.g. "gpt-4o-mini".
 	Model string `yaml:"model"`
-	// SystemPrompt is prepended to every conversation (optional).
 	SystemPrompt string `yaml:"system-prompt"`
-	// ConfigPath is the path to the net-tools config file used by tools.
 	ConfigPath string `yaml:"-"`
-	// MemoryPath is the path to the persistent agent memory file. When empty,
-	// DefaultMemoryPath (~/.agent-nettools/agent-memory.json) is used at runtime.
-	// Exposed so tests / non-default installs can point it elsewhere.
 	MemoryPath string `yaml:"-"`
-	// Timeout is the per-request HTTP timeout for LLM calls (seconds). 0 = 120s.
 	Timeout int `yaml:"-"`
-	// MaxRetries is how many times to retry a transient failure (429/5xx/net).
-	// 0 disables retry. Default applied in NewLLM when 0.
 	MaxRetries int `yaml:"-"`
+}
+
+// ConfigAgent is the standalone LLM configuration read from "agent.yml".
+// Keeps the agent's secret-bearing settings (api-key, memory-path, system-prompt)
+// out of the main proxy config (config.yml). If agent.yml is absent the caller
+// falls back to the legacy agent section embedded in config.yml.
+type ConfigAgent struct {
+	BaseURL      string `yaml:"base-url"`
+	APIKey       string `yaml:"api-key"`
+	Model        string `yaml:"model"`
+	SystemPrompt string `yaml:"system-prompt"`
+	MemoryPath   string `yaml:"memory-path"`
+	Timeout      int    `yaml:"timeout"`
+	MaxRetries   int    `yaml:"max-retries"`
+}
+
+const DefaultAgentConfigPath = "agent.yml"
+
+func LoadAgentConfig(path string) (ConfigAgent, string, error) {
+	if path == "" {
+		cwd, _ := os.Getwd()
+		path = filepath.Join(cwd, DefaultAgentConfigPath)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ConfigAgent{}, path, err
+	}
+	var ca ConfigAgent
+	if err := yaml.Unmarshal(data, &ca); err != nil {
+		return ConfigAgent{}, path, err
+	}
+	return ca, path, nil
 }
 
 func DefaultConfig() Config {
@@ -32,15 +59,9 @@ func DefaultConfig() Config {
 	}
 }
 
-// defaultLLMTimeout is the per-request HTTP timeout in seconds when unset.
 const defaultLLMTimeout = 120
-
-// defaultMaxRetries is the retry count for transient LLM failures when unset.
 const defaultMaxRetries = 3
 
-// DefaultSystemPrompt is the canned instruction set the agent starts with when
-// the user hasn't supplied one in config. Kept here (not a const) so callers
-// can extend it (the TUI appends remembered SSH hosts to it at session open).
 func DefaultSystemPrompt() string {
 	return `你是 agent-nettools 的内置助手。你可以通过调用工具(tools)来操作网络工具集：查看/修改配置、测试代理延迟、启动/停止服务、切换代理分组、添加路由规则、SSH 文件传输、记忆与回忆等。
 规则：

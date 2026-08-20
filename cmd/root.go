@@ -40,18 +40,39 @@ var rootCmd = &cobra.Command{
 }
 
 func initCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Generate a default config file",
+		Short: "Generate default config files",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfgPath, _ := cmd.Flags().GetString("config")
 			if cfgPath == "" {
 				cwd, _ := os.Getwd()
 				cfgPath = filepath.Join(cwd, "config.yml")
 			}
-			return os.WriteFile(cfgPath, []byte(config.ExampleConfig), 0644)
+			// Scaffold config.yml (proxy settings) if missing.
+			if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+				if err := os.WriteFile(cfgPath, []byte(config.ExampleConfig), 0644); err != nil {
+					return err
+				}
+				fmt.Printf("wrote %s\n", cfgPath)
+			}
+			// Scaffold agent.yml (LLM settings) if missing.
+			agentPath, _ := cmd.Flags().GetString("agent-config")
+			if agentPath == "" {
+				dir := filepath.Dir(cfgPath)
+				agentPath = filepath.Join(dir, agent.DefaultAgentConfigPath)
+			}
+			if _, err := os.Stat(agentPath); os.IsNotExist(err) {
+				if err := os.WriteFile(agentPath, []byte(config.ExampleAgentConfig), 0644); err != nil {
+					return err
+				}
+				fmt.Printf("wrote %s\n", agentPath)
+			}
+			return nil
 		},
 	}
+	cmd.Flags().String("agent-config", "", "path to standalone agent config (default <config-dir>/agent.yml)")
+	return cmd
 }
 
 func startCmd() *cobra.Command {
@@ -307,6 +328,7 @@ func useCmd() *cobra.Command {
 }
 
 func tuiCmd() *cobra.Command {
+	var agentConfigPath string
 	cmd := &cobra.Command{
 		Use:   "tui",
 		Short: "Start the LLM Agent interactive mode (natural-language control)",
@@ -316,24 +338,51 @@ func tuiCmd() *cobra.Command {
 				cwd, _ := os.Getwd()
 				cfgPath = filepath.Join(cwd, "config.yml")
 			}
+			// main proxy config (rules, proxies, groups, ...) — used by tools
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			sysPrompt := cfg.Agent.SystemPrompt
+
+			// LLM settings: prefer standalone agent.yml; fall back to cfg.Agent
+			// for backward compatibility with older configs.
+			var ca agent.ConfigAgent
+			var aPath string
+			aPath = agentConfigPath
+			if aPath == "" {
+				aPath = filepath.Join(filepath.Dir(cfgPath), agent.DefaultAgentConfigPath)
+			}
+			ca, aPath, err = agent.LoadAgentConfig(aPath)
+			if err != nil {
+				// agent.yml absent — fall back to legacy cfg.Agent block in config.yml.
+				ca = agent.ConfigAgent{
+					BaseURL:      cfg.Agent.BaseURL,
+					APIKey:       cfg.Agent.APIKey,
+					Model:        cfg.Agent.Model,
+					SystemPrompt: cfg.Agent.SystemPrompt,
+					Timeout:      cfg.Agent.Timeout,
+					MaxRetries:   cfg.Agent.MaxRetries,
+				}
+				aPath = cfgPath
+			}
+
+			sysPrompt := ca.SystemPrompt
 			if sysPrompt == "" {
 				sysPrompt = agent.DefaultSystemPrompt()
 			}
 			agentCfg := agent.Config{
 				Enable:       true,
-				BaseURL:      cfg.Agent.BaseURL,
-				APIKey:       cfg.Agent.APIKey,
-				Model:        cfg.Agent.Model,
+				BaseURL:      ca.BaseURL,
+				APIKey:       ca.APIKey,
+				Model:        ca.Model,
 				SystemPrompt: sysPrompt,
 				ConfigPath:   cfgPath,
-				MemoryPath:   agent.DefaultMemoryPath(),
-				Timeout:      cfg.Agent.Timeout,
-				MaxRetries:   cfg.Agent.MaxRetries,
+				MemoryPath:   ca.MemoryPath,
+				Timeout:      ca.Timeout,
+				MaxRetries:   ca.MaxRetries,
+			}
+			if agentCfg.MemoryPath == "" {
+				agentCfg.MemoryPath = agent.DefaultMemoryPath()
 			}
 			if agentCfg.BaseURL == "" {
 				agentCfg.BaseURL = "https://api.openai.com/v1"
@@ -342,13 +391,17 @@ func tuiCmd() *cobra.Command {
 				agentCfg.Model = "gpt-4o-mini"
 			}
 			if agentCfg.APIKey == "" {
-				return fmt.Errorf("agent: no api-key set (configure agent.api-key in %s or set AGENT_API_KEY env)", cfgPath)
+				agentCfg.APIKey = os.Getenv("AGENT_API_KEY")
+			}
+			if agentCfg.APIKey == "" {
+				return fmt.Errorf("agent: no api-key set (configure agent.yml/api-key or set AGENT_API_KEY env; legacy: config.yml agent.api-key)")
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			return agent.RunTUI(ctx, agentCfg)
 		},
 	}
+	cmd.Flags().StringVar(&agentConfigPath, "agent-config", "", "path to standalone agent config (default <config-dir>/agent.yml)")
 	return cmd
 }
 
