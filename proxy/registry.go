@@ -111,6 +111,7 @@ func NewProxy(cfg Config) (Proxy, error) {
 	case "vmess":       return NewVMess(cfg), nil
 	case "vless":       return NewVLESS(cfg), nil
 	case "forward":     return NewForward(cfg), nil
+	case "http3":       return NewHTTP3(cfg), nil
 	default:            return nil, fmt.Errorf("unknown proxy type: %s", cfg.Type)
 	}
 }

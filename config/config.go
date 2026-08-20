@@ -32,19 +32,32 @@ type STUNVPNConfig struct {
 	MTU         int    `yaml:"mtu"`          // tunnel MTU
 }
 
+type WireGuardConfig struct {
+	Enable    bool   `yaml:"enable"`
+	Private   string `yaml:"private"`
+	Public    string `yaml:"public"`
+	Preshared string `yaml:"preshared"`
+	Listen    string `yaml:"listen"`
+	PeerAddr  string `yaml:"peer-addr"`
+	VirtualIP string `yaml:"virtual-ip"`
+	Keepalive int    `yaml:"keepalive"`
+	Handshake int    `yaml:"handshake"`
+}
+
 type Config struct {
-	Listen  Listen        `yaml:"listen"`
-	Mode    string        `yaml:"mode"`
-	Proxies []ProxyConfig `yaml:"proxies"`
-	Groups  []GroupConfig `yaml:"proxy-groups"`
-	Rules   []string      `yaml:"rules"`
-	TUN     TunConfig     `yaml:"tun"`
-	DNS     DnsConfig     `yaml:"dns"`
-	Web     WebConfig     `yaml:"web"`
-	MITM    MitmConfig    `yaml:"mitm"`
-	N2N     N2NConfig     `yaml:"n2n"`
-	STUNVPN STUNVPNConfig `yaml:"stunvpv"`
-	Agent   AgentConfig   `yaml:"agent"`
+	Listen    Listen        `yaml:"listen"`
+	Mode      string        `yaml:"mode"`
+	Proxies   []ProxyConfig `yaml:"proxies"`
+	Groups    []GroupConfig `yaml:"proxy-groups"`
+	Rules     []string      `yaml:"rules"`
+	TUN       TunConfig     `yaml:"tun"`
+	DNS       DnsConfig     `yaml:"dns"`
+	Web       WebConfig     `yaml:"web"`
+	MITM      MitmConfig    `yaml:"mitm"`
+	N2N       N2NConfig     `yaml:"n2n"`
+	STUNVPN   STUNVPNConfig `yaml:"stunvpv"`
+	WireGuard WireGuardConfig `yaml:"wireguard"`
+	Agent     AgentConfig   `yaml:"agent"`
 }
 
 type Listen struct {
@@ -228,6 +241,18 @@ func Load(path string) (*Config, error) {
 			cfg.Agent.APIKey = k
 		}
 	}
+	if cfg.WireGuard.Listen == "" {
+		cfg.WireGuard.Listen = ":51820"
+	}
+	if cfg.WireGuard.Keepalive == 0 {
+		cfg.WireGuard.Keepalive = 25
+	}
+	if cfg.WireGuard.Handshake == 0 {
+		cfg.WireGuard.Handshake = 25
+	}
+	if cfg.WireGuard.VirtualIP == "" {
+		cfg.WireGuard.VirtualIP = "10.0.0.2"
+	}
 	return cfg, nil
 }
 
@@ -391,6 +416,18 @@ stunvpv:
   password: ""         # TURN auth password
   virtual-cidr: "10.201.0.0/16"
   mtu: 1400
+
+# WireGuard P2P VPN (minimal handshake, tunnel.Peer implementation)
+wireguard:
+  enable: false
+  private: ""           # 64-hex private key (or 0s = auto-generate)
+  public: ""            # peer's public key (64-hex)
+  preshared: ""         # optional PSK
+  listen: ":51820"      # UDP listen
+  peer-addr: ""         # remote peer UDP address (e.g. "1.2.3.4:51820")
+  virtual-ip: "10.0.0.2"
+  keepalive: 25         # keepalive interval seconds
+  handshake: 25         # handshake timeout seconds
 
 # LLM Agent (natural-language control via the tui subcommand)
 # Set api-key here or export AGENT_API_KEY env var.

@@ -192,6 +192,9 @@ func fullStart(cmd *cobra.Command) error {
 	if cfg.STUNVPN.Enable {
 		start("stunvpv", func() error { return runSTUNVPV(ctx, cfg, logRing, true) })
 	}
+	if cfg.WireGuard.Enable {
+		start("wireguard", func() error { return runWireGuard(ctx, cfg, logRing, true) })
+	}
 
 	// The proxy listener is the primary foreground service; it blocks here.
 	fmt.Printf("net-redirect running (mode=%s, http=%d, socks5=%d)\n", cfg.Mode, cfg.Listen.HTTP, cfg.Listen.SOCKS5)
@@ -365,6 +368,7 @@ func Execute() {
 	rootCmd.AddCommand(tunCmd())
 	rootCmd.AddCommand(n2nCmd())
 	rootCmd.AddCommand(stunvpvCmd())
+	rootCmd.AddCommand(wireguardCmd())
 	// Standalone SSH/SFTP file copy (non-TUI tool; shares memory with the agent).
 	rootCmd.AddCommand(scpCmd())
 	if err := rootCmd.Execute(); err != nil {
