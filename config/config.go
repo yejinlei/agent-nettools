@@ -69,6 +69,11 @@ type ProxyConfig struct {
 	URL      string   `yaml:"url"`
 	Interval int      `yaml:"interval"`
 	Default  string   `yaml:"default"`
+
+	// Reality transport for VLESS. See proxy.Config for semantics.
+	PublicKey   string `yaml:"public-key"`
+	ShortID     string `yaml:"short-id"`
+	Fingerprint string `yaml:"fingerprint"`
 }
 
 type GroupConfig struct {

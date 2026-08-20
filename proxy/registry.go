@@ -93,6 +93,10 @@ func toProxyConfig(pc config.ProxyConfig) Config {
 		URL:      pc.URL,
 		Interval: pc.Interval,
 		Default:  pc.Default,
+
+		PublicKey:   pc.PublicKey,
+		ShortID:     pc.ShortID,
+		Fingerprint: pc.Fingerprint,
 	}
 }
 
@@ -105,6 +109,7 @@ func NewProxy(cfg Config) (Proxy, error) {
 	case "ss", "shadowsocks": return NewShadowsocks(cfg)
 	case "trojan":      return NewTrojan(cfg), nil
 	case "vmess":       return NewVMess(cfg), nil
+	case "vless":       return NewVLESS(cfg), nil
 	case "forward":     return NewForward(cfg), nil
 	default:            return nil, fmt.Errorf("unknown proxy type: %s", cfg.Type)
 	}

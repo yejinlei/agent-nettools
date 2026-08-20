@@ -24,6 +24,7 @@ import (
 //	forward local    <listen> <dst>             (-L)   local listener → fixed dst
 //	forward remote   <sshAlias> <rListen> <dst> (-R)  listener on a remote SSH host → local dst
 //	forward dynamic  <listen>                   (-D)   local SOCKS5 listener → any dst
+//	forward udp      <listen> <dst>             (-U)   local UDP listener → fixed UDP dst (DNS, etc.)
 //	forward tls      <listen> <dst> [sni]              HTTPS listener → plain-HTTP backend
 //
 // --proxy <name> routes the *destination dial* through a configured proxy
@@ -33,21 +34,24 @@ func forwardCmd() *cobra.Command {
 	var proxyName string
 	cmd := &cobra.Command{
 		Use:   "forward <mode> ...",
-		Short: "SSH 风格端口转发: local(-L)/remote(-R)/dynamic(-D)/tls",
+		Short: "SSH 风格端口转发: local(-L)/remote(-R)/dynamic(-D)/udp(-U)/tls",
 		Long: `SSH 风格的多模式端口转发。每个模式对应 forward 包里的一个函数，新增模式只需加一个 case。
 
   forward local   <listen> <dst>              # 本地监听 → 固定目标 (-L)
   forward remote  <sshAlias> <rListen> <dst>   # 远程主机上的监听 → 本地目标 (-R)
   forward dynamic <listen>                     # 本地 SOCKS5 监听 → 任意目标 (-D)
+  forward udp     <listen> <dst>               # 本地 UDP 监听 → 固定 UDP 目标 (-U，DNS/QUIC 等)
   forward tls     <listen> <dst> [sni]         # HTTPS 监听 → 明文 HTTP 后端
 
 --proxy <name>  让目标拨号走配置文件里的指定代理（SS/Trojan 等）；不指定则直连。
   forward local :8080 example.com:80 --proxy prod-ss
+  forward udp :1053 1.1.1.1:53 --proxy prod-socks5   # 通过 SOCKS5 的 UDP ASSOCIATE 代理 DNS
 
 示例:
   agent-nettools forward local 127.0.0.1:3306 db.internal:3306
   agent-nettools forward dynamic 1080
   agent-nettools forward remote prod :9090 127.0.0.1:8080
+  agent-nettools forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
   agent-nettools forward tls 0.0.0.0:443 127.0.0.1:80`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -81,10 +85,12 @@ func forwardCmd() *cobra.Command {
 				return forwardRemote(ctx, rest, dialer)
 			case "dynamic", "-d", "-D":
 				return forwardDynamic(ctx, rest, dialer)
+			case "udp", "-u", "-U":
+				return forwardUDP(ctx, rest, cmd, proxyName)
 			case "tls":
 				return forwardTLS(ctx, rest)
 			default:
-				return fmt.Errorf("unknown mode %q (want local|remote|dynamic|tls)", mode)
+				return fmt.Errorf("unknown mode %q (want local|remote|dynamic|udp|tls)", mode)
 			}
 		},
 	}
@@ -144,6 +150,50 @@ func forwardDynamic(ctx context.Context, args []string, dialer forward.Dialer) e
 		return fmt.Errorf("usage: forward dynamic <listen>")
 	}
 	return forward.Dynamic(ctx, args[0], dialer)
+}
+
+func forwardUDP(ctx context.Context, args []string, cmd *cobra.Command, proxyName string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: forward udp <listen> <dst>")
+	}
+	pd, cleanup, err := buildPacketDialer(cmd, proxyName)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return forward.UDP(ctx, args[0], args[1], pd)
+}
+
+// buildPacketDialer returns a forward.PacketDialer for the udp mode. If
+// proxyName is set, it resolves the proxy from config and type-asserts it to
+// proxy.PacketProxy (the UDP-capable interface); only SOCKS5 qualifies today.
+// If the named proxy doesn't support UDP, it's a user-facing error rather than
+// a silent fallback to direct — the user asked to proxy UDP, so failing loud
+// is correct. With no --proxy, returns nil (= direct UDP) and a no-op cleanup.
+func buildPacketDialer(cmd *cobra.Command, proxyName string) (forward.PacketDialer, func(), error) {
+	if proxyName == "" {
+		return nil, func() {}, nil
+	}
+	cfg, err := loadCfg(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	reg, err := proxy.Register(cfg.Proxies)
+	if err != nil {
+		return nil, nil, fmt.Errorf("register proxies: %w", err)
+	}
+	p, err := reg.Get(proxyName)
+	if err != nil {
+		return nil, nil, err
+	}
+	pp, ok := proxy.AsPacketProxy(p)
+	if !ok {
+		return nil, nil, fmt.Errorf("proxy %q (%s) does not support UDP — only SOCKS5 does", proxyName, p.Name())
+	}
+	d := func(ctx context.Context) (net.PacketConn, error) {
+		return pp.ConnectUDP(ctx)
+	}
+	return d, func() { p.Close() }, nil
 }
 
 func forwardTLS(ctx context.Context, args []string) error {

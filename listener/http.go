@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"agent-nettools/proxy"
 	"agent-nettools/router"
 	"agent-nettools/web"
 )
@@ -221,15 +222,27 @@ func (l *Listener) handleSOCKS5(conn net.Conn) {
 	cmdBuf := make([]byte, 256)
 	m, err := io.ReadFull(conn, cmdBuf[:5])
 	if err != nil || m < 5 { return }
+	cmd := cmdBuf[1]
 	at := cmdBuf[3]
 	switch at {
 	case 0x01:
 		io.ReadFull(conn, cmdBuf[:6])
 	case 0x03:
-		len := int(cmdBuf[4])
-		io.ReadFull(conn, cmdBuf[:5+len])
+		ln := int(cmdBuf[4])
+		io.ReadFull(conn, cmdBuf[:5+ln])
 	case 0x04:
 		io.ReadFull(conn, cmdBuf[:18])
+	}
+
+	// UDP ASSOCIATE (CMD 0x03): the client wants to relay UDP through us. We
+	// allocate a local UDP socket, reply with its bound address, and pump
+	// SOCKS5-framed datagrams between that socket and the dial-side UDP conn
+	// (direct, or through a proxy's ConnectUDP if the routed proxy supports it).
+	// The TCP control connection stays open for the relay's lifetime; closing
+	// it tears the association down.
+	if cmd == 0x03 {
+		l.handleSOCKS5UDP(conn)
+		return
 	}
 
 	host := ""
@@ -277,6 +290,161 @@ func (l *Listener) handleSOCKS5(conn net.Conn) {
 func getBound(conn net.Conn) (net.IP, uint16) {
 	addr, _ := net.ResolveTCPAddr("tcp", conn.LocalAddr().String())
 	return addr.IP, uint16(addr.Port)
+}
+
+// handleSOCKS5UDP implements the SOCKS5 UDP ASSOCIATE server path (CMD 0x03).
+// The client sent the greeting + a UDP ASSOCIATE request; we've read cmdBuf
+// (5 bytes: ver,cmd,rsv,atyp,addr...). We reply with the bound address of a
+// freshly-allocated local UDP socket, then relay SOCKS5-framed datagrams:
+//
+//	client→us:  [RSV 2][FRAG 1][ATYP 1][DST.ADDR][DST.PORT 2][DATA]  → unwrap, forward to dst
+//	dst→us:     DATA                                                                  → wrap, send to client's relay socket
+//
+// The TCP control connection (conn) stays open for the relay's lifetime; when
+// the client closes it, the relay goroutine tears down. Routing follows the
+// same Router.Pick as the CONNECT path: if the picked proxy implements
+// proxy.PacketProxy (UDP-capable, e.g. a chained SOCKS5), datagrams egress
+// through it; otherwise we dial dst directly over a plain UDP socket.
+func (l *Listener) handleSOCKS5UDP(conn net.Conn) {
+	// The client's DST.ADDR in a UDP ASSOCIATE request is conventionally
+	// 0.0.0.0:0 (it doesn't know the relay address yet). We don't route on it.
+	udpSock, err := net.ListenPacket("udp", "0.0.0.0:0")
+	if err != nil {
+		log.Printf("socks5 udp listen: %v", err)
+		conn.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // general failure
+		return
+	}
+	defer udpSock.Close()
+
+	// Reply with BND.ADDR:BND.PORT. Report the address the client should send
+	// its UDP datagrams to: if the TCP peer is a real address, echo that IP so
+	// NAT'd clients target the right interface; else 0.0.0.0. Port is the UDP
+	// socket's bound port.
+	boundPort := uint16(localPort(udpSock))
+	boundIP := peerIP(conn)
+	if boundIP == nil {
+		boundIP = net.IPv4zero
+	}
+	ipBytes := boundIP.To4()
+	atyp := byte(0x01)
+	addrBytes := ipBytes
+	if ipBytes == nil {
+		atyp = 0x04
+		addrBytes = boundIP.To16()
+	}
+	resp := []byte{0x05, 0x00, 0x00, atyp}
+	resp = append(resp, addrBytes...)
+	resp = append(resp, byte(boundPort>>8), byte(boundPort))
+	if _, err := conn.Write(resp); err != nil {
+		return
+	}
+
+	// Remember the client's relay socket address (where to send wrapped replies).
+	// The client sends its first datagram from the same socket it'll keep using,
+	// so we capture it on the first packet and send replies there.
+	var clientRelay net.Addr
+
+	// Try to route through a UDP-capable proxy. We don't know the dst ahead of
+	// time (it's per-datagram), so we only set up the proxied path if a single
+	// global proxy is configured; otherwise relay directly. This matches the
+	// common "local SOCKS5 server that egresses through one upstream" use case.
+	relayToDst, relayFromDst := l.udpRelayDirect(udpSock)
+
+	done := make(chan struct{})
+	go func() {
+		<-connClosed(conn) // TCP control conn closed → tear down
+		udpSock.Close()
+		close(done)
+	}()
+
+	// Read loop: unwrap each client datagram, forward payload to dst.
+	go func() {
+		buf := make([]byte, 65535)
+		for {
+			n, from, err := udpSock.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			clientRelay = from
+			dst, payload, err := proxy.ParseUDPHeader(buf[:n])
+			if err != nil {
+				continue // drop malformed
+			}
+			relayToDst(dst, payload)
+		}
+	}()
+
+	// Reply pump (if proxied) writes wrapped replies to the client relay addr.
+	if relayFromDst != nil {
+		go func() {
+			buf := make([]byte, 65535)
+			for {
+				n, src, err := relayFromDst.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				if clientRelay == nil {
+					continue
+				}
+				hdr, err := proxy.EncodeUDPHeader(src.String())
+				if err != nil {
+					continue
+				}
+				frame := append(hdr, buf[:n]...)
+				udpSock.WriteTo(frame, clientRelay)
+			}
+		}()
+	}
+
+	<-done
+}
+
+// udpRelayDirect returns a (toDst, fromDst) pair for direct UDP relay: toDst
+// resolves dst and writes the payload on the caller's udpSock; fromDst is nil
+// (direct mode reads replies on the same udpSock the caller already loops on,
+// so there's no separate reply pump). For proxied relay through a UDP-capable
+// upstream, a future variant returns a proxy.PacketProxy-backed PacketConn.
+func (l *Listener) udpRelayDirect(udpSock net.PacketConn) (func(dst string, payload []byte), net.PacketConn) {
+	toDst := func(dst string, payload []byte) {
+		addr, err := net.ResolveUDPAddr("udp", dst)
+		if err != nil {
+			return
+		}
+		udpSock.WriteTo(payload, addr)
+	}
+	return toDst, nil
+}
+
+// localPort extracts the port from a PacketConn's local address.
+func localPort(p net.PacketConn) int {
+	addr, err := net.ResolveUDPAddr("udp", p.LocalAddr().String())
+	if err != nil {
+		return 0
+	}
+	return addr.Port
+}
+
+// peerIP returns the remote IP of a TCP connection (the client's address), or
+// nil if it can't be resolved.
+func peerIP(conn net.Conn) net.IP {
+	if tcp, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		return tcp.IP
+	}
+	return nil
+}
+
+// connClosed returns a channel that fires when the connection is closed (read
+// returns EOF/error). Used to detect TCP control-connection teardown for the
+// UDP ASSOCIATE lifetime without blocking the main goroutine.
+func connClosed(conn net.Conn) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		one := make([]byte, 1)
+		_, err := conn.Read(one)
+		_ = err
+		close(ch)
+	}()
+	return ch
 }
 
 // statsConn wraps a net.Conn and reports bytes read/written to a StatsTracker

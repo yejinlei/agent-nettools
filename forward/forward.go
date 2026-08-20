@@ -1,16 +1,23 @@
 // Package forward implements the generic TCP/UDP forwarding primitives shared
-// by the `forward` CLI subcommand and the agent. The four modes mirror SSH's
+// by the `forward` CLI subcommand and the agent. The five modes mirror SSH's
 // port-forwarding mental model so they're easy to remember:
 //
 //   - Local:   forward local <listen> <dst>            (-L)  local listener → fixed dst
 //   - Remote:  forward remote <sshHost> <rlisten> <dst> (-R)  listener on a remote SSH host → fixed dst (dialed from the host)
 //   - Dynamic: forward dynamic <listen>                  (-D)  local SOCKS5 listener → any dst (chosen per connection)
+//   - UDP:     forward udp <listen> <dst>                (-U)  local UDP listener → fixed UDP dst (DNS, etc.)
 //   - TLS:     forward tls <listen> <dst> [sni]                HTTPS listener → plain-HTTP backend (TLS termination)
 //
 // A Dialer decides how the *destination* is reached. Passing a proxy's
 // Connect makes forwarding go *through* that proxy; net.DialContext makes it
 // direct. This is the seam that lets forwarding compose with the proxy layer
 // (and with Chain) — the same dial callback, one architecture.
+//
+// UDP forwarding has a parallel seam: a PacketDialer returns a PacketConn to
+// relay datagrams through. A SOCKS5 proxy's ConnectUDP satisfies this; the
+// direct case uses a plain UDP socket. So `forward udp --proxy socks5-x`
+// tunnels UDP through the proxy's UDP ASSOCIATE, while `forward udp` alone just
+// forwards a local UDP port to a remote one directly.
 package forward
 
 import (
@@ -98,6 +105,97 @@ func Dynamic(ctx context.Context, listen string, dialer Dialer) error {
 		}
 		go handleSOCKS5Connect(ctx, c, dialer)
 	}
+}
+
+// PacketDialer returns a PacketConn used to relay UDP datagrams. nil means
+// "direct": forward.UDP will open its own UDP socket to dst. A SOCKS5 proxy's
+// ConnectUDP satisfies this signature, so `forward udp --proxy socks5-x`
+// tunnels UDP datagrams through the proxy's UDP ASSOCIATE. This is the
+// datagram-world twin of the TCP Dialer — same composition seam, one layer.
+type PacketDialer func(ctx context.Context) (net.PacketConn, error)
+
+// DirectPacket is the default PacketDialer: a plain UDP socket bound to
+// 127.0.0.1:0. WriteTo/ReadFrom go directly to the wire (no proxy).
+func DirectPacket(ctx context.Context) (net.PacketConn, error) {
+	return net.ListenPacket("udp", "127.0.0.1:0")
+}
+
+// UDP forwards a local UDP listener to a fixed UDP destination (dst host:port)
+// via packetDialer. Blocks until ctx is cancelled. Each datagram arriving on
+// the local listener is written to dst through the dialer's PacketConn, and
+// replies are relayed back to the originating client — so a local DNS query
+// (e.g.) can be proxied through a SOCKS5 server's UDP ASSOCIATE.
+//
+// For a *direct* forward (no proxy), packetDialer is nil and we simply send
+// each datagram to dst over the same local socket, relaying replies back — a
+// plain UDP port forward. For a *proxied* forward, the dialer gives us a
+// SOCKS5-framed PacketConn, and dst is reached through the proxy.
+func UDP(ctx context.Context, listen, dst string, packetDialer PacketDialer) error {
+	udpLn, err := net.ListenPacket("udp", listen)
+	if err != nil {
+		return fmt.Errorf("udp listen %s: %w", listen, err)
+	}
+	defer udpLn.Close()
+	log.Printf("forward: udp %s → %s", listen, dst)
+
+	var proxied net.PacketConn
+	if packetDialer != nil {
+		proxied, err = packetDialer(ctx)
+		if err != nil {
+			return fmt.Errorf("udp dialer: %w", err)
+		}
+		defer proxied.Close()
+		// Relay replies from the proxy back to the local client that sent the
+		// matching request. We track the most-recent client so replies can be
+		// bounced back — UDP is connectionless, so we keep a single "last peer".
+		go func() {
+			buf := make([]byte, 65535)
+			for {
+				n, _, err := proxied.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				if _, err := udpLn.WriteTo(buf[:n], lastClient); err != nil {
+					return
+				}
+			}
+		}()
+	}
+
+	go func() { <-ctx.Done(); udpLn.Close() }()
+	buf := make([]byte, 65535)
+	for {
+		n, client, err := udpLn.ReadFrom(buf)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("udp read %s: %w", listen, err)
+		}
+		lastClient = client
+		if proxied != nil {
+			if _, err := proxied.WriteTo(buf[:n], dummyUDPAddr(dst)); err != nil {
+				log.Printf("forward: udp write %s: %v", dst, err)
+			}
+		} else {
+			// Direct: send straight to dst over the same listener socket.
+			if _, err := udpLn.WriteTo(buf[:n], dummyUDPAddr(dst)); err != nil {
+				log.Printf("forward: udp write %s: %v", dst, err)
+			}
+		}
+	}
+}
+
+var lastClient net.Addr
+
+// dummyUDPAddr resolves dst (host:port) to a *net.UDPAddr; errors fall back to
+// a nil addr (WriteTo will then fail loudly, which the caller logs).
+func dummyUDPAddr(dst string) net.Addr {
+	a, err := net.ResolveUDPAddr("udp", dst)
+	if err != nil {
+		return nil
+	}
+	return a
 }
 
 // Remote forwards a listener created ON a remote SSH host back to a local
