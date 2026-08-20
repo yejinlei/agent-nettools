@@ -1,0 +1,149 @@
+
+# agent-nettools example configuration
+
+listen:
+  http: 7890
+  socks5: 7891
+
+# Mode: global / rule / direct
+mode: rule
+
+proxies:
+  - name: proxy-http
+    type: http
+    server: 1.2.3.4
+    port: 443
+    username: user
+    password: pass
+
+  - name: proxy-socks5
+    type: socks5
+    server: 5.6.7.8
+    port: 1080
+
+  - name: proxy-https
+    type: https
+    server: 9.10.11.12
+    port: 443
+    sni: example.com
+
+  - name: ss-1
+    type: ss
+    server: 13.14.15.16
+    port: 8388
+    cipher: aes-256-gcm
+    password: my-secret
+
+  - name: trojan-1
+    type: trojan
+    server: 17.18.19.20
+    port: 443
+    password: trojan-pass
+    sni: trojan.example.com
+
+  - name: vmess-1
+    type: vmess
+    server: 21.22.23.24
+    port: 8080
+    uuid: 35f70a81-0e7f-4a3a-b180-2f4f2c9d2f4e
+    alterId: 0
+    cipher: auto
+
+proxy-groups:
+  - name: Auto
+    type: url-test
+    proxies: [proxy-http, proxy-socks5, ss-1]
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+
+  - name: Manual
+    type: selector
+    proxies: [proxy-http, proxy-socks5, ss-1, trojan-1, vmess-1, DIRECT]
+    default: proxy-http
+
+rules:
+  - DOMAIN,google.com,Auto
+  - DOMAIN-SUFFIX,.google.com,Auto
+  - IP-CIDR,8.8.8.8/32,DIRECT
+  - GEOIP,CN,DIRECT
+  - MATCH,Auto
+
+# DNS server configuration
+dns:
+  enable: false
+  listen: ":53"
+  mode: direct   # direct | doh | dot
+  doh-server: "https://cloudflare-dns.com/dns-query"
+  dot-server: "1.1.1.1:853"
+  fake-cidr: "198.18.0.0/15"
+
+# Web dashboard
+web:
+  enable: false
+  port: 9090
+  username: ""
+  password: ""
+
+# TUN transparent proxy
+tun:
+  enable: false
+  device: "net-redirect"
+  mtu: 1500
+  gateway: "198.18.0.1"
+  cidr: "198.18.0.0/16"
+  dns: "198.18.0.2"
+
+# MITM HTTPS inspection
+mitm:
+  enable: false
+  ca-path: "ca.crt"
+  cert-dir: "certs"
+  http-port: 8081
+
+# n2n virtual LAN (P2P VPN)
+# Can run as supernode (hub) or edge (node)
+n2n:
+  enable: false
+  mode: "edge"        # "supernode" or "edge"
+  listen: ":7654"     # UDP listen port
+  supernode: ""       # supernode address for edge mode (e.g. "1.2.3.4:7654")
+  community: "net-redirect"
+  password: ""        # encryption password (optional)
+  virtual-cidr: "10.200.0.0/16"  # virtual network CIDR (supernode only)
+  mtu: 1400
+  interval: 30        # heartbeat interval (seconds)
+
+# STUN/TURN virtual LAN (standard protocol P2P VPN)
+# Can run as supernode (STUN/TURN server) or client
+stunvpv:
+  enable: false
+  mode: "supernode"    # "supernode" or "client"
+  listen: ":3478"      # STUN/TURN server listen port
+  turn-server: ""      # TURN server address for client mode (e.g. "1.2.3.4:3478")
+  realm: "net-redirect"
+  username: ""         # TURN auth username
+  password: ""         # TURN auth password
+  virtual-cidr: "10.201.0.0/16"
+  mtu: 1400
+
+# WireGuard P2P VPN (minimal handshake, tunnel.Peer implementation)
+wireguard:
+  enable: false
+  private: ""           # 64-hex private key (or 0s = auto-generate)
+  public: ""            # peer's public key (64-hex)
+  preshared: ""         # optional PSK
+  listen: ":51820"      # UDP listen
+  peer-addr: ""         # remote peer UDP address (e.g. "1.2.3.4:51820")
+  virtual-ip: "10.0.0.2"
+  keepalive: 25         # keepalive interval seconds
+  handshake: 25         # handshake timeout seconds
+
+# LLM Agent (natural-language control via the tui subcommand)
+# The agent's LLM settings (api-key, model, system-prompt) live in agent.yml,
+# which is generated alongside this file by the init command. config.Agent is kept as a
+# fallback for backward compatibility with older config files.
+agent:
+  enable: false
+  base-url: "https://api.openai.com/v1"
+  api-key: ""
+  model: "gpt-4o-mini"
