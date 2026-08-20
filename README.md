@@ -44,7 +44,7 @@ agent-nettools 是网络代理领域的 `/etc/hosts`：一条命令，把任意 
 | 端口转发 | forward: -L local / -R remote / -D dynamic / -U udp / tls | — |
 | 系统代理 | sysproxy on/off/status (Win 注册表 + Linux gsettings) | — |
 | 透明代理 | TUN (wintun / /dev/net/tun) + 自动桥接 n2n/stunvpv | — |
-| 隧道 | n2n P2P / STUN/TURN VPN + tunnel.Peer 接缝 | WireGuard |
+| 隧道 | n2n P2P / STUN/TURN VPN / **WireGuard** + tunnel.Peer 接缝 | — |
 | 特殊能力 | forward 劫持 / MITM CA / 流量统计 | — |
 | 运维 | ping / status / use / Web Dashboard / REST API / DNS(DoH/DoT) / LLM Agent TUI / gen_config / SCP | — |
 
@@ -200,8 +200,8 @@ rules:
 | **P2** | VLESS / Reality | uTLS 指纹伪装 + X25519 + ShortID | ✅ |
 | **P3** | P2P 隧道 | n2n P2P / STUN/TURN 跨 NAT 组网 | ✅ |
 | **P3** | WebRTC / UDP 代理 | SOCKS5 UDP ASSOCIATE + forward -U | ✅ |
-| P3 | WireGuard 隧道 | tunnel.Peer 接缝已就绪，实现即插 | 🔜 |
-| P3 | HTTP/3 (QUIC) | 下一代 HTTP 代理 | 🔜 |
+| P3 | WireGuard 隧道 | tunnel.Peer 接缝已就绪，实现即插 | ✅ |
+| P3 | HTTP/3 (QUIC) | 下一代 HTTP 代理 | ✅ |
 
 ## 依赖
 
@@ -209,6 +209,8 @@ rules:
 |----|------|
 | github.com/spf13/cobra | CLI 框架 |
 | gopkg.in/yaml.v3 | 配置解析 |
+| `github.com/quic-go/quic-go` | HTTP/3 (QUIC) 代理 (`type: http3`) |
+| `github.com/quic-go/quic-go` | HTTP/3 (QUIC) 代理 (`type: http3`) |
 | golang.org/x/crypto | SS 加密 (ChaCha20-Poly1305) |
 
 ## 路线图
@@ -231,5 +233,5 @@ rules:
 - [x] VLESS / Reality (uTLS 指纹, P2)
 - [x] P2P 隧道 (n2n / STUN/TURN, P3)
 - [x] WebRTC / UDP 代理 (SOCKS5 UDP ASSOCIATE + forward -U, P3)
-- [ ] WireGuard 隧道
-- [ ] HTTP/3 (QUIC) 代理
+- [x] WireGuard 隧道
+- [x] HTTP/3 (QUIC) 代理
