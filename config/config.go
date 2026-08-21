@@ -64,8 +64,9 @@ type Config struct {
 }
 
 type Listen struct {
-	HTTP   int `yaml:"http"`
-	SOCKS5 int `yaml:"socks5"`
+	HTTP     int `yaml:"http"`
+	SOCKS5   int `yaml:"socks5"`
+	TProxy   int `yaml:"tproxy"` // Linux TProxy listener (iptables TPROXY redirect target)
 }
 
 type ProxyConfig struct {
@@ -301,6 +302,7 @@ var (
 	allowedGroupTypes = map[string]bool{
 		"selector": true, "urltest": true, "url-test": true,
 		"roundrobin": true, "round-robin": true, "chain": true,
+		"failover": true, "load-balance": true, "loadbalance": true,
 	}
 )
 

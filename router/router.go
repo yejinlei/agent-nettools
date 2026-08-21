@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 	"net"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -20,18 +22,35 @@ type Rule struct {
 	Type    string
 	Pattern string
 	Target  string
+	// regex is lazily compiled for REGEX rules.
+	regex *regexp.Regexp
 }
 
 func New(mode string, rawRules []string, reg *proxy.Registry) (*Router, error) {
 	rules := []Rule{}
 	for _, raw := range rawRules {
 		parts := strings.SplitN(raw, ",", 3)
-		if len(parts) < 3 { continue }
-		rules = append(rules, Rule{
+		if len(parts) < 3 {
+			continue
+		}
+		rule := Rule{
 			Type:    strings.ToUpper(strings.TrimSpace(parts[0])),
 			Pattern: strings.TrimSpace(parts[1]),
 			Target:  strings.TrimSpace(parts[2]),
-		})
+		}
+		if rule.Type == "REGEX" {
+			re, err := regexp.Compile(rule.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf("invalid REGEX rule %q: %w", rule.Pattern, err)
+			}
+			rule.regex = re
+		}
+		if rule.Type == "PORT-RANGE" {
+			if _, err := parsePortRange(rule.Pattern); err != nil {
+				return nil, fmt.Errorf("invalid PORT-RANGE rule %q: %w", rule.Pattern, err)
+			}
+		}
+		rules = append(rules, rule)
 	}
 	return &Router{mode: mode, rules: rules, proxyReg: reg}, nil
 }
@@ -41,14 +60,36 @@ func (r *Router) Pick(addr string) (proxy.Proxy, error) {
 	mode, rules := r.mode, r.rules
 	r.mu.Unlock()
 
-	if mode == "direct" { return r.proxyReg.Get("DIRECT") }
-	if mode == "global" { return r.selectFirst() }
-	host := addr
-	if h, _, err := net.SplitHostPort(addr); err == nil { host = h }
+	if mode == "direct" {
+		return r.proxyReg.Get("DIRECT")
+	}
+	if mode == "global" {
+		return r.selectFirst()
+	}
+
+	host, port, err := parseHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+
 	for _, rule := range rules {
-		if r.match(host, rule) { return r.proxyReg.Get(rule.Target) }
+		if r.match(host, port, rule) {
+			return r.proxyReg.Get(rule.Target)
+		}
 	}
 	return r.selectFirst()
+}
+
+func parseHostPort(addr string) (string, int, error) {
+	h, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		return h, 0, err
+	}
+	port, err := strconv.Atoi(p)
+	if err != nil {
+		return h, 0, err
+	}
+	return h, port, nil
 }
 
 // AddRule appends a rule to the front of the rule list (highest priority).
@@ -56,11 +97,20 @@ func (r *Router) Pick(addr string) (proxy.Proxy, error) {
 // `/add-rule` TUI command so new rules take effect without restarting.
 func (r *Router) AddRule(raw string) {
 	parts := strings.SplitN(raw, ",", 3)
-	if len(parts) < 3 { return }
+	if len(parts) < 3 {
+		return
+	}
 	rule := Rule{
 		Type:    strings.ToUpper(strings.TrimSpace(parts[0])),
 		Pattern: strings.TrimSpace(parts[1]),
 		Target:  strings.TrimSpace(parts[2]),
+	}
+	if rule.Type == "REGEX" {
+		re, err := regexp.Compile(rule.Pattern)
+		if err != nil {
+			return
+		}
+		rule.regex = re
 	}
 	r.mu.Lock()
 	r.rules = append([]Rule{rule}, r.rules...)
@@ -85,25 +135,75 @@ func (r *Router) RemoveProxy(name string) {
 	r.proxyReg.Unregister(name)
 }
 
-func (r *Router) match(host string, rule Rule) bool {
+func (r *Router) match(host string, port int, rule Rule) bool {
 	switch rule.Type {
 	case "DOMAIN":
 		return host == rule.Pattern
 	case "DOMAIN-SUFFIX":
 		suffix := rule.Pattern
-		if !strings.HasPrefix(suffix, ".") { suffix = "." + suffix }
+		if !strings.HasPrefix(suffix, ".") {
+			suffix = "." + suffix
+		}
 		return strings.HasSuffix(host, suffix) || host == strings.TrimPrefix(rule.Pattern, ".")
 	case "DOMAIN-KEYWORD":
 		return strings.Contains(host, rule.Pattern)
+	case "REGEX":
+		if rule.regex != nil {
+			return rule.regex.MatchString(host)
+		}
+		return false
 	case "IP-CIDR":
 		return inCIDR(host, rule.Pattern)
 	case "GEOIP":
 		return geoipMatch(host)
+	case "PORT-RANGE":
+		return matchPortRange(port, rule.Pattern)
 	case "MATCH":
 		return true
 	default:
 		return false
 	}
+}
+
+// parsePortRange parses patterns like "80-443" or "80" into [lo,hi].
+func parsePortRange(s string) ([2]int, error) {
+	s = strings.TrimSpace(s)
+	if idx := strings.Index(s, "-"); idx >= 0 {
+		lo, err := strconv.Atoi(strings.TrimSpace(s[:idx]))
+		if err != nil {
+			return [2]int{}, err
+		}
+		hi, err := strconv.Atoi(strings.TrimSpace(s[idx+1:]))
+		if err != nil {
+			return [2]int{}, err
+		}
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		if lo < 0 || lo > 65535 || hi < 0 || hi > 65535 {
+			return [2]int{}, fmt.Errorf("port out of range: %s", s)
+		}
+		return [2]int{lo, hi}, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return [2]int{}, err
+	}
+	return [2]int{n, n}, nil
+}
+
+// matchPortRange returns true if port falls within the parsed pattern.
+// When port == 0 the pattern still matches (some callers don't have a port),
+// so rules with no explicit port context aren't silently dropped.
+func matchPortRange(port int, pattern string) bool {
+	rng, err := parsePortRange(pattern)
+	if err != nil {
+		return false
+	}
+	if port == 0 {
+		return true
+	}
+	return port >= rng[0] && port <= rng[1]
 }
 
 func (r *Router) selectFirst() (proxy.Proxy, error) {

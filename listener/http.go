@@ -18,9 +18,10 @@ import (
 )
 
 type Options struct {
-	HTTPPort   int
-	SOCKS5Port int
-	Router     *router.Router
+	HTTPPort    int
+	SOCKS5Port  int
+	TProxyPort  int
+	Router      *router.Router
 	// Stats optionally receives per-proxy traffic + connection accounting.
 	// nil disables accounting (no overhead).
 	Stats *web.StatsTracker
@@ -32,6 +33,7 @@ type Listener struct {
 	mu      sync.Mutex
 	httpLn  net.Listener
 	socksLn net.Listener
+	tproxyLn net.Listener
 	closed  bool
 	stopCh  chan struct{}
 	errs    chan error
@@ -70,9 +72,20 @@ func (l *Listener) Start() error {
 		l.mu.Unlock()
 		go l.serveSOCKS5(ln)
 	}
+	if l.opts.TProxyPort > 0 {
+		ln, err := tproxyListen(fmt.Sprintf(":%d", l.opts.TProxyPort))
+		if err != nil {
+			l.Stop()
+			return fmt.Errorf("tproxy listen :%d: %w", l.opts.TProxyPort, err)
+		}
+		l.mu.Lock()
+		l.tproxyLn = ln
+		l.mu.Unlock()
+		go l.serveTProxy(ln)
+	}
 
-	// If neither port is configured there is nothing to serve.
-	if l.opts.HTTPPort == 0 && l.opts.SOCKS5Port == 0 {
+	// If none of the three ports is configured there is nothing to serve.
+	if l.opts.HTTPPort == 0 && l.opts.SOCKS5Port == 0 && l.opts.TProxyPort == 0 {
 		return nil
 	}
 
@@ -93,7 +106,7 @@ func (l *Listener) Stop() {
 		return
 	}
 	l.closed = true
-	httpLn, socksLn, stopCh := l.httpLn, l.socksLn, l.stopCh
+	httpLn, socksLn, tproxyLn, stopCh := l.httpLn, l.socksLn, l.tproxyLn, l.stopCh
 	l.mu.Unlock()
 
 	if httpLn != nil {
@@ -101,6 +114,9 @@ func (l *Listener) Stop() {
 	}
 	if socksLn != nil {
 		socksLn.Close()
+	}
+	if tproxyLn != nil {
+		tproxyLn.Close()
 	}
 	if stopCh != nil {
 		close(stopCh)
@@ -487,4 +503,58 @@ func (l *Listener) relay(client, remote net.Conn, proxyName string) {
 	go func() { io.Copy(client, remote); done <- struct{}{}; client.Close() }()
 	<-done
 	<-done
+}
+
+// serveTProxy accepts connections delivered by the Linux TPROXY socket option.
+// Each accepted conn already carries the original destination in RemoteAddr (via
+// origDst in tproxyConn); serveTProxy hands it off to handleTProxy, which
+// behaves like handleHTTP (reads HTTP CONNECT or tunneling request lines, picks
+// a proxy via Router.Pick, and relays) but using the conn's RemoteAddr as the
+// target. This way TProxy can be pointed at a plain HTTP proxy and let the
+// existing HTTP dispatch handle the rest of the flow.
+func (l *Listener) serveTProxy(ln net.Listener) {
+	defer ln.Close()
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			l.fatalAccept(ln, "tproxy listener", err)
+			return
+		}
+		go l.handleTProxy(conn)
+	}
+}
+
+// handleTProxy tunnels an incoming TProxy connection through the configured
+// router, using the original destination (RemoteAddr, preserved by
+// tproxyConn.origDst) as the target address. If RemoteAddr can't be parsed
+// as TCP, the conn is closed and a log line emitted.
+func (l *Listener) handleTProxy(conn net.Conn) {
+	defer conn.Close()
+	ta, ok := conn.RemoteAddr().(*net.TCPAddr)
+	if !ok || ta == nil {
+		log.Printf("tproxy: cannot determine target address: %v", conn.RemoteAddr())
+		return
+	}
+	if ta.Port == 0 {
+		ta = &net.TCPAddr{IP: ta.IP, Port: 443}
+	}
+	target := ta.String()
+
+	p, err := l.opts.Router.Pick(target)
+	if err != nil {
+		log.Printf("tproxy: pick proxy for %s: %v", target, err)
+		return
+	}
+	var remote net.Conn
+	if p.Name() == "DIRECT" {
+		remote, err = net.DialTimeout("tcp", target, 10*time.Second)
+	} else {
+		remote, err = p.Connect(context.Background(), target)
+	}
+	if err != nil {
+		log.Printf("tproxy: connect %s via %s: %v", target, p.Name(), err)
+		return
+	}
+	l.relay(conn, remote, p.Name())
+	remote.Close()
 }

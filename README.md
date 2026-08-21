@@ -107,16 +107,16 @@ TUI 快捷命令 (/xxx → agent-netx xxx):
 | 类别 | 已实现 | 规划中 |
 |------|--------|--------|
 | 远程代理 | HTTP / HTTPS / SOCKS5 ✦UDP / SS / Trojan / VMess / **VLESS+Reality ★uTLS** | — |
-| 代理分组 | selector / url-test / round-robin / **chain (代理链式)** | fallback / load-balance |
+| 代理分组 | selector / url-test / round-robin / **chain (代理链式)** / **failover (故障切换)** / **load-balance (负载均衡)** | — |
 | 代理模式 | direct / global / rule | — |
-| 规则类型 | DOMAIN / SUFFIX / KEYWORD / IP-CIDR / GEOIP / MATCH | REGEX / PORT-RANGE |
-| 本地监听 | HTTP / SOCKS5 | TProxy |
+| 规则类型 | DOMAIN / SUFFIX / KEYWORD / IP-CIDR / GEOIP / MATCH / **REGEX** / **PORT-RANGE** | — |
+| 本地监听 | HTTP / SOCKS5 / **TProxy (Linux, iptables TPROXY)** | — |
 | 端口转发 | forward: -L local / -R remote / -D dynamic / -U udp / tls | — |
 | 系统代理 | sysproxy on/off/status (Win 注册表 + Linux gsettings) | — |
 | 透明代理 | TUN (wintun / /dev/net/tun) + 自动桥接 n2n/stunvpv | — |
 | 隧道 | n2n P2P / STUN/TURN VPN / **WireGuard** + tunnel.Peer 接缝 | — |
 | 网络诊断 | **netdiag** — 连接 / 监听 / 抓包 / 聚合统计（netstat / ss / tcpdump 等价） | — |
-| 会话管理 | **session** — TUI 内置 + Agent 工具，持久化 + 切换 + 续写 | — |
+| 会话管理 | **session** — TUI 内置 + Agent 工具，持久化 + 切换 + 续写 + **导出/导入 (session-export/import)** | — |
 | 特殊能力 | forward 劫持 / MITM CA / 流量统计 | — |
 | 运维 | ping / status / use / Web Dashboard / REST API / DNS(DoH/DoT) / LLM Agent TUI / gen_config / SCP | — |
 
@@ -254,7 +254,12 @@ Agent 内可一句话调用：`"查看 8080 端口的连接"` → 自动调 `net
 | **P2** | DNS 代理 | 本地 DNS 解析，DoH/DoT + FakeDNS | ✅ |
 | **P2** | VLESS / Reality | uTLS 指纹伪装 + X25519 + ShortID | ✅ |
 | **P2** | 网络诊断 netdiag | 连接 / 监听 / 抓包 / 聚合，媲美 netstat / ss / tcpdump | ✅ |
-| **P2** | 会话管理 session | TUI + Agent 持久化 + 切换 + 续写 | ✅ |
+| **P2** | 会话管理 session | TUI + Agent 持久化 + 切换 + 续写 + 导出/导入 | ✅ |
+| **P2** | 规则类型扩展 | REGEX 正则 + PORT-RANGE 端口段 | ✅ |
+| **P2** | 代理分组扩展 | failover (故障切换) + load-balance (负载均衡) | ✅ |
+| **P3** | TProxy 透明监听 | Linux iptables TPROXY 目标，无需改 App 配置 | ✅ |
+| **P3** | 运行时动态配置 | /add-proxy /add-rule 会话内动态更新，无需重启 | ✅ |
+| **P3** | TUI TAB 补全 | 会话 `/` 命令按前缀自动补全 | ✅ |
 | **P3** | P2P 隧道 | n2n P2P / STUN/TURN 跨 NAT 组网 | ✅ |
 | **P3** | WebRTC / UDP 代理 | SOCKS5 UDP ASSOCIATE + forward -U | ✅ |
 | P3 | WireGuard 隧道 | tunnel.Peer 接缝已就绪，实现即插 | ✅ |
@@ -299,7 +304,12 @@ Agent 内可一句话调用：`"查看 8080 端口的连接"` → 自动调 `net
 - [x] WireGuard 隧道
 - [x] HTTP/3 (QUIC) 代理
 - [x] 网络诊断 (netdiag: conns/listeners/packets/stats)
-- [x] 会话管理 (session: TUI 内置命令 + Agent 工具)
+- [x] 会话管理 (session: TUI 内置命令 + Agent 工具 + 导出/导入)
+- [x] 规则类型 REGEX / PORT-RANGE
+- [x] 代理分组 failover / load-balance
+- [x] TProxy 透明监听 (Linux)
+- [x] 运行时动态配置 (/add-proxy /add-rule)
+- [x] TUI TAB 命令补全
 
 ---
 

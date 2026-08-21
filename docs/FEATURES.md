@@ -149,9 +149,26 @@ Reality 让 TLS 握手看起来像真实浏览器（Chrome/Firefox/iOS/Edge/Rand
 | 功能 | 说明 | 状态 |
 |------|------|------|
 | 模式 | direct / global / rule | ✅ |
-| 规则 | DOMAIN / SUFFIX / KEYWORD / IP-CIDR / GEOIP / MATCH | ✅ |
-| 分组 | selector(手选) / url-test(最快) / round-robin(轮询) | ✅ |
+| 规则 | DOMAIN / DOMAIN-SUFFIX / DOMAIN-KEYWORD / IP-CIDR / GEOIP / **REGEX** (正则) / **PORT-RANGE** (端口段) / MATCH | ✅ |
+| 分组 | selector (手选) / url-test (最快 + 故障切换) / round-robin (轮询) / chain (链式) / **failover** (按序 fallback) / **load-balance** (随机分发) | ✅ |
 | **流量统计** | 每代理上/下行字节 + 活跃连接数，经 statsConn 自动计量 | ✅ |
+
+### 规则类型速览
+
+```yaml
+rules:
+  - DOMAIN,google.com,proxyA              # 精确域名
+  - DOMAIN-SUFFIX,.google.com,proxyA      # 后缀
+  - DOMAIN-KEYWORD,google,proxyA          # 关键字
+  - IP-CIDR,8.8.8.8/32,DIRECT             # 网段
+  - GEOIP,CN,DIRECT                       # 内网/私有/CN
+  - REGEX,^api\..+\.example\.com$,proxyA  # 正则匹配主机名
+  - PORT-RANGE,80-443,DIRECT              # 目标端口段 (含两端)
+  - MATCH,DIRECT                          # 兜底
+```
+
+**REGEX**: 用 Go `regexp` 语法匹配目标主机名（不含端口），例如 `^api\..+\.example\.com$`。
+**PORT-RANGE**: `80-443` 或单端口 `443`，命中客户端请求的目标端口；当端口为 0（无法识别时）会退化为匹配。
 
 流量统计在 `listener` 的 relay 路径自动生效（`Options.Stats` 接一个 `web.StatsTracker`），无需改业务代码；`/api/stats` 端点可读。
 
@@ -170,6 +187,21 @@ Reality 让 TLS 握手看起来像真实浏览器（Chrome/Firefox/iOS/Edge/Rand
 | use | `use <分组> <代理>` | 切手动分组 | ✅ |
 | init | `init` | 生成示例 config.yml | ✅ |
 | scp | `scp` | SSH 文件拷贝（forward remote 复用其主机解析） | ✅ |
+| netdiag | `netdiag` | 连接/监听/抓包/聚合 | ✅ |
+| logs | `logs [--tail n] [--follow]` | 读共享日志文件 | ✅ |
+| validate | `validate` | 语义校验 config | ✅ |
+| stop / restart | `stop <name|all>` / `restart <name|all>` | 通过 PID 文件跨进程启停 | ✅ |
+
+### TUI 会话内扩展命令
+
+| 命令 | 作用 |
+|------|------|
+| `/add-proxy <name> <type> <server> <port> [key=val ...]` | 运行时新增代理，写入 `~/.agent-netx/dynamic.yml` 覆盖层，下次 `buildRouter` 生效 |
+| `/add-rule <TYPE,PATTERN,TARGET>` | 运行时新增规则，写到同一覆盖层，最高优先级 |
+| `/session-export [<idOrName>] <dst>` | 导出当前会话（或指定 id/name）到 JSON 文件 |
+| `/session-import <src>` | 从 JSON 文件导入会话，生成新 UUID，保存到 store |
+
+TAB 键对 `/` 命令按前缀自动补全；唯一匹配时直接补齐，多个匹配时循环。
 
 ---
 

@@ -99,16 +99,17 @@ func runProxy(ctx context.Context, cfg *config.Config, logRing *web.LogRing, sta
 	}
 
 	lst, err := listener.New(listener.Options{
-		HTTPPort:   cfg.Listen.HTTP,
-		SOCKS5Port: cfg.Listen.SOCKS5,
-		Router:     rtr,
-		Stats:      stats,
+		HTTPPort:    cfg.Listen.HTTP,
+		SOCKS5Port:  cfg.Listen.SOCKS5,
+		TProxyPort:  cfg.Listen.TProxy,
+		Router:      rtr,
+		Stats:       stats,
 	})
 	if err != nil {
 		return fmt.Errorf("init listener: %w", err)
 	}
 	if logRing != nil {
-		logRing.Write(web.INFO, "proxy: http=:%d socks5=:%d mode=%s", cfg.Listen.HTTP, cfg.Listen.SOCKS5, cfg.Mode)
+		logRing.Write(web.INFO, "proxy: http=:%d socks5=:%d tproxy=:%d mode=%s", cfg.Listen.HTTP, cfg.Listen.SOCKS5, cfg.Listen.TProxy, cfg.Mode)
 	}
 	go func() {
 		<-ctx.Done()

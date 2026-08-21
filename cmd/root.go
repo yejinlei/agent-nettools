@@ -137,9 +137,10 @@ func fastStart(cmd *cobra.Command) error {
 	}
 
 	lst, err := listener.New(listener.Options{
-		HTTPPort:   cfg.Listen.HTTP,
-		SOCKS5Port: cfg.Listen.SOCKS5,
-		Router:     rtr,
+		HTTPPort:    cfg.Listen.HTTP,
+		SOCKS5Port:  cfg.Listen.SOCKS5,
+		TProxyPort:  cfg.Listen.TProxy,
+		Router:      rtr,
 	})
 	if err != nil {
 		return err
