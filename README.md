@@ -10,26 +10,13 @@
 
 ![net-redirect 架构](docs/architecture.svg)
 
-```
-                    ┌─────────────────────────────────────┐
-                    │           net-redirect              │
-                    │                                     │
-  ┌──────────┐     │  ┌─────────┐  ┌──────────────────┐  │
-  │  App     │────▶│  │ HTTP    │  │  Router (rules)   │  │
-  │  系统代理 │     │  │ SOCKS5  │  │  DOMAIN/SUFFIX/  │  │
-  │  TUN     │     │  │ LISTEN  │  │  CIDR/GEOIP/MATCH│  │
-  └──────────┘     │  └─────────┘  └────────┬─────────┘  │
-                    │                       │              │
-                    │         ┌─────────────┼──────────┐   │
-                    │         ▼             ▼          ▼   │
-                    │   ┌──────────┐ ┌─────────┐ ┌──────┐ │
-                    │   │  remote  │ │ group   │ │forw.│ │
-                    │   │ proxy    │ │ selector│ │      │ │
-                    │   │ HTTP/SS/ │ │ urltest │ │      │ │
-                    │   │ Trojan/  │ │ rr      │ │      │ │
-                    │   │ VMess    │ │         │ │      │ │
-                    │   └──────────┘ └─────────┘ └──────┘ │
-                    └─────────────────────────────────────┘
+```mermaid
+flowchart LR
+    App["App<br/>系统代理 / TUN"] --> Listen["HTTP<br/>SOCKS5<br/>LISTEN"]
+    Listen --> Router["Router<br/>DOMAIN / SUFFIX<br/>CIDR / GEOIP / MATCH"]
+    Router --> Remote["远程代理<br/>HTTP / SS /<br/>Trojan / VMess"]
+    Router --> Group["代理分组<br/>selector /<br/>urltest / rr"]
+    Router --> Forward["端口转发<br/>forward"]
 ```
 
 ## 功能全景
@@ -79,21 +66,24 @@ agent-netx tui
 
 - "配置 ss://aes-256-gcm:pwd@server:port 走全局代理" → agent 生成 proxies + 设置模式
 - "把 google.com 加到 Auto 分组" → 写规则
-- "把本机 C:pp.log 上传到 prod 服务器 /tmp/" → 调 scp
+- "把本机 C:\app.log 上传到 prod 服务器 /tmp/" → 调 scp
 - "查看当前代理配置" / "ping 一下 api.multica.ai" → 读/执行
 - "把 google 走 ss-1" → 自动改 config.yml 并写入记忆
 
 所有命令、配置项、工具都可以自然语言驱动，不用记 YAML、不用看文档。CLI 模式用于脚本化、管道、cron 等场景。
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ 方案              │ 条件                  │ 需要 App 配合 │ 改 hosts  │
-├───────────────────┼───────────────────────┼───────────────┼───────────┤
-│ 系统代理 + rule   │ App 走 WinINet 代理   │ ❌ 不用       │ ❌ 不用   │
-│ TUN 模式 (P0)     │ 任意 App              │ ❌ 完全不用   │ ❌ 不用   │
-│ MITM CA (P0)      │ 任意 App + hosts      │ ❌ 完全不用   │ ✅ 需要   │
-│ forward 命令      │ 任意 App + hosts      │ ❌ 完全不用   │ ✅ 需要   │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    App["App 不走代理?"]
+    A1["系统代理 + rule<br/>条件: App 走 WinINet<br/>App 配合: ❌<br/>改 hosts: ❌"]
+    A2["TUN 模式 (P0)<br/>条件: 任意 App<br/>App 配合: ❌<br/>改 hosts: ❌"]
+    A3["MITM CA (P0)<br/>条件: 任意 App + hosts<br/>App 配合: ❌<br/>改 hosts: ✅"]
+    A4["forward 命令<br/>条件: 任意 App + hosts<br/>App 配合: ❌<br/>改 hosts: ✅"]
+
+    App -->|WinINet 代理生效| A1
+    App -->|任意 App, 无需配置| A2
+    App -->|需要 hosts| A3
+    App -->|需要 hosts| A4
 ```
 
 ## 命令总览
