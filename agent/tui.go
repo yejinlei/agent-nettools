@@ -571,9 +571,11 @@ func (t *tui) renderHeader() {
 	verLine := sSubtitle.Render("  Version:   ") + sVersion.Render(ver)
 	dirLine := sSubtitle.Render("  Directory: ") + wd
 	sessLine := sSubtitle.Render("  Session:   ") + sStatusVal.Render(sessLabel)
+	modelLine := sStatusKey.Render("  model:") + " " + sStatusVal.Render(t.cfg.Model) +
+		"   ·   " + sStatusKey.Render("base:") + " " + sStatusVal.Render(shortBaseURL(t.cfg.BaseURL))
 	helpLine := sSubtitle.Render("  Send ") + sStatusVal.Render("/help") + sSubtitle.Render(" for help information.")
 
-	content := title + "\n" + dirLine + "\n" + sessLine + "\n" + verLine + "\n" + helpLine
+	content := title + "\n" + dirLine + "\n" + sessLine + "\n" + verLine + "\n" + modelLine + "\n" + helpLine
 
 	fmt.Println()
 	for _, ln := range paddedLogo {
@@ -671,10 +673,10 @@ func (t *tui) renderStatusBar() {
 	if !term.IsTerminal(int(os.Stdout.Fd())) {
 		return
 	}
-	parts := []string{
-		sStatusKey.Render("model") + ":" + sStatusVal.Render(t.cfg.Model),
-		sStatusKey.Render("base") + ":" + sStatusVal.Render(shortBaseURL(t.cfg.BaseURL)),
-	}
+	// Reserved status line: dynamic info only. The model/base info is shown
+	// once in the header at TUI entry so it does not flash between user and
+	// assistant turns.
+	parts := []string{}
 	if t.mem.HasSSHHosts() {
 		hosts := strings.Join(t.mem.sshAliases(), ",")
 		if len(hosts) > 30 {
@@ -682,7 +684,13 @@ func (t *tui) renderStatusBar() {
 		}
 		parts = append(parts, sStatusKey.Render("ssh") + ":" + sStatusVal.Render(hosts))
 	}
+	if t.turns > 0 {
+		parts = append(parts, sStatusKey.Render("turns") + ":" + sStatusVal.Render(fmt.Sprintf("%d", t.turns)))
+	}
 	statusText := strings.Join(parts, "   ·   ")
+	if statusText == "" {
+		statusText = sSubtitle.Render("agent-netx · 按 /help 查看命令")
+	}
 	bar := sStatusBar.Render(" " + statusText + " ")
 	for lipgloss.Width(bar) < termWidth {
 		bar += " "
