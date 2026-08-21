@@ -83,6 +83,7 @@ TUI 快捷命令 (/xxx → agent-netx xxx):
   /sysproxy    系统代理 on/off  /tun         仅启动 TUN 设备
   /forward     端口转发         /n2n         仅启动 n2n 节点
   /scp         SSH 文件拷贝     /stunvpv     仅启动 STUN/TURN VPN
+  /run         本地/远端执行命令  /wireguard   仅启动 WireGuard
   /netdiag     网络诊断         /wireguard/frp/tinc/socat/corsproxy
 /help                查看命令帮助
 ```
@@ -161,6 +162,7 @@ agent-netx [command]
   stunvpv      仅启动 STUN/TURN VPN 节点（独立运行）
   tui          启动 LLM Agent 交互模式（自然语言驱动所有功能）
   scp          SSH 文件拷贝（记住 --alias）
+  run          本地/远端执行 shell 命令（local cmd.exe/sh; remote SSH）
   netdiag      查看进程网络端口和数据包 (netstat / ss / tcpdump 等价)
 
 全局选项：

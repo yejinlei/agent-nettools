@@ -187,6 +187,7 @@ rules:
 | use | `use <分组> <代理>` | 切手动分组 | ✅ |
 | init | `init` | 生成示例 config.yml | ✅ |
 | scp | `scp` | SSH 文件拷贝（forward remote 复用其主机解析） | ✅ |
+| run | `run <local\|remote>` | 本地/远端执行 shell 命令，配合 scp + file_copy 实现一键部署 n2n/frp/wireguard | ✅ |
 | netdiag | `netdiag` | 连接/监听/抓包/聚合 | ✅ |
 | logs | `logs [--tail n] [--follow]` | 读共享日志文件 | ✅ |
 | validate | `validate` | 语义校验 config | ✅ |
@@ -200,6 +201,7 @@ rules:
 | `/add-rule <TYPE,PATTERN,TARGET>` | 运行时新增规则，写到同一覆盖层，最高优先级 |
 | `/session-export [<idOrName>] <dst>` | 导出当前会话（或指定 id/name）到 JSON 文件 |
 | `/session-import <src>` | 从 JSON 文件导入会话，生成新 UUID，保存到 store |
+| `/run <local|remote>` | 本地/远端执行命令（agent 工具 `run_local` / `run_remote` 也在 TUI 内可用） |
 
 TAB 键对 `/` 命令按前缀自动补全；唯一匹配时直接补齐，多个匹配时循环。
 
@@ -208,6 +210,18 @@ TAB 键对 `/` 命令按前缀自动补全；唯一匹配时直接补齐，多�
 ## 分层速记口诀
 
 > **L7 改应用，L4 转端口，L3 接网卡，协议可换，路由决定走谁，运维看面板。**
+
+## 一键部署链路（n2n / frp / wireguard 通用）
+
+在 TUI 里告诉 agent 远端中心机的 SSH 信息，然后一句"在 prod 部署 n2n VPN"即可完成整条链路：
+
+1. **记 SSH**：告诉 agent 主机地址/用户/密码 → `remember` 工具存到 `~/.agent-netx/memory.json`，下次 `--alias prod` 即可免输。
+2. **生成配置**：`gen_config` 生成含 n2n supernet 的 `config.yml`。
+3. **传文件**：`file_copy`（复用 `scp` 底层）把 `agent-netx` 二进制 + `config.yml` 传到 `/opt/agent-netx/`。
+4. **起服务**：`run_remote --alias prod "cd /opt/agent-netx && ./agent-netx start -c config.yml"`，远端 session 流式回传输出。
+5. **看状态**：`run_remote --alias prod "agent-netx status"` 或 `logs_tail(n=20)`。
+
+CLI 等价：`agent-netx run remote --alias prod --cmd "cd /opt/agent-netx && ./agent-netx start -c config.yml"`。
 
 需要新增功能时，先问"它属于哪一层"：
 - 改 / 拦截 App 流量 → L7
