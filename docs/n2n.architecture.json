@@ -149,13 +149,15 @@
       "from": "edge-a",
       "to": "edge-b",
       "label": "Data 转发 (直连)",
-      "variant": "dashed"
+      "variant": "dashed",
+      "labelAt": [220, 184]
     },
     {
       "id": "c4",
       "from": "supernode",
       "to": "ipalloc",
-      "label": "分配虚拟 IP"
+      "label": "分配虚拟 IP",
+      "labelAt": [535, 314]
     },
     {
       "id": "c5",
@@ -169,13 +171,19 @@
       "from": "heartbeat",
       "to": "edge-b",
       "label": "keepalive",
-      "variant": "dashed"
+      "variant": "dashed",
+      "labelAt": [756, 376],
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [[855, 210], [125, 210]]
     },
     {
       "id": "c7",
       "from": "edge-a",
       "to": "tun-bridge",
-      "label": "OnData"
+      "label": "OnData",
+      "fromSide": "bottom",
+      "toSide": "top"
     }
   ],
   "cards": [

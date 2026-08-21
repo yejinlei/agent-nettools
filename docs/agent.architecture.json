@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Agent — LLM 驱动的配置生成器",
+    "output": "agent.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "input-path", "label": "自然语言 → 配置写入", "focus": ["user", "tui", "agent", "registry", "memory", "config"], "note": "用户中文输入经 Agent 解析后落入工具/配置。" },
+      { "id": "llm-loop", "label": "LLM 往返调用", "focus": ["agent", "llm"], "note": "Agent 与 OpenAI 兼容 API 之间的往返。" },
+      { "id": "persist", "label": "持久化路径", "focus": ["agent", "registry", "memory", "config"], "note": "工具调用最终落到记忆库和 config.yml。" }
+    ]
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户 (终端)", "sublabel": "自然语言", "pos": [40, 280], "size": [120, 60] },
+    { "id": "tui", "type": "frontend", "label": "TUI 交互层", "sublabel": "Kimi 风格", "pos": [210, 280], "size": [140, 60] },
+    { "id": "agent", "type": "backend", "label": "LLM Agent", "sublabel": "system prompt · tool registry", "pos": [420, 170], "size": [170, 90], "tag": "P0 核心" },
+    { "id": "llm", "type": "cloud", "label": "Agent API", "sublabel": "OpenAI-compatible base-url", "pos": [880, 90], "size": [150, 60] },
+    { "id": "registry", "type": "database", "label": "工具注册表", "sublabel": "tools / dispatch", "pos": [420, 410], "size": [170, 60] },
+    { "id": "memory", "type": "database", "label": "记忆库", "sublabel": "config.yml + memory/", "pos": [640, 410], "size": [140, 60] },
+    { "id": "config", "type": "database", "label": "config.yml", "sublabel": "写入配置", "pos": [840, 410], "size": [150, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "LLM Agent 子命令域", "wraps": ["tui", "agent", "llm", "registry", "memory", "config"] }
+  ],
+  "connections": [
+    { "id": "c1", "from": "user", "to": "tui", "label": "自然语言输入", "variant": "emphasis", "labelAt": [185, 354] },
+    { "id": "c2", "from": "tui", "to": "agent", "label": "系统提示 + 历史消息", "labelAt": [385, 274] },
+    { "id": "c3", "from": "agent", "to": "llm", "label": "gpt-4o / claude", "fromSide": "right", "toSide": "left" },
+    { "id": "c4", "from": "llm", "to": "agent", "label": "文本 / tool-calls", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "via": [[955, 160], [955, 40], [505, 40], [505, 165]], "labelAt": [730, 35] },
+    { "id": "c5", "from": "agent", "to": "registry", "label": "tool-call dispatch", "fromSide": "bottom", "toSide": "top", "labelAt": [505, 310] },
+    { "id": "c6", "from": "registry", "to": "memory", "label": "读写" },
+    { "id": "c7", "from": "memory", "to": "config", "label": "写入配置" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "支持的工具", "items": ["ping_proxies", "use_config / switch_group", "gen_config", "file_copy (scp)", "remember / recall", "ssh_config"] },
+    { "dot": "emerald", "title": "配置", "items": ["base-url / api-key / model 在 agent.yml", "支持本地、自建、官方 OpenAI 兼容 API", "memory/ 跨会话持久化"] },
+    { "dot": "rose", "title": "交互风格", "items": ["Kimi 风格 TUI：顶端版本框 + 提示行", "用户消息 ✨ / AI 回复 ●", "状态栏：base · 版本 · context 用量"] }
+  ]
+}

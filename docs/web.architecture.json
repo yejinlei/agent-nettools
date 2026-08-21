@@ -6,8 +6,8 @@
     "output": "web.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1000,
-      500
+      1180,
+      560
     ]
   },
   "components": [
@@ -47,7 +47,7 @@
       "sublabel": "username + password",
       "pos": [
         260,
-        90
+        110
       ],
       "size": [
         150,
@@ -62,7 +62,7 @@
       "tag": "web.LogRing",
       "pos": [
         540,
-        90
+        110
       ],
       "size": [
         150,
@@ -77,7 +77,7 @@
       "tag": "web.StatsTracker",
       "pos": [
         540,
-        380
+        400
       ],
       "size": [
         150,
@@ -124,7 +124,8 @@
       "id": "c2",
       "from": "auth",
       "to": "srv",
-      "label": "Basic Auth 校验"
+      "label": "Basic Auth 校验",
+      "labelAt": [335, 184]
     },
     {
       "id": "c3",
@@ -149,7 +150,18 @@
       "from": "logs",
       "to": "stats",
       "label": "共享 ctx",
-      "variant": "dashed"
+      "variant": "dashed",
+      "labelAt": [1050, 260],
+      "via": [
+        [
+          1050,
+          170
+        ],
+        [
+          1050,
+          400
+        ]
+      ]
     }
   ],
   "cards": [

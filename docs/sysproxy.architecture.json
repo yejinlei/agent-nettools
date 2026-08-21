@@ -6,8 +6,8 @@
     "output": "sysproxy.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1180,
-      560
+      1200,
+      650
     ]
   },
   "components": [
@@ -163,7 +163,12 @@
       "id": "c6",
       "from": "agent",
       "to": "cmd",
-      "label": "共用 sysproxy 包"
+      "label": "共用 sysproxy 包",
+      "via": [
+        [720, 600],
+        [220, 600]
+      ],
+      "labelAt": [470, 620]
     }
   ],
   "cards": [

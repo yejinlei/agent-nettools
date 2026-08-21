@@ -6,8 +6,8 @@
     "output": "wireguard.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1180,
-      560
+      1220,
+      580
     ]
   },
   "components": [
@@ -179,6 +179,10 @@
       "from": "aead",
       "to": "hkdf",
       "label": "派生 AEAD 密钥",
+      "labelAt": [
+        785,
+        154
+      ],
       "variant": "dashed"
     },
     {

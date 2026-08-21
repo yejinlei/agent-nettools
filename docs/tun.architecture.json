@@ -145,6 +145,7 @@
       "from": "read-loop",
       "to": "parse",
       "label": "解析目标 IP",
+      "labelAt": [575, 214],
       "variant": "dashed"
     },
     {
@@ -157,7 +158,8 @@
       "id": "c5",
       "from": "peer",
       "to": "write-loop",
-      "label": "OnData(src, pkt)"
+      "label": "OnData(src, pkt)",
+      "labelAt": [935, 314]
     },
     {
       "id": "c6",
@@ -170,6 +172,7 @@
       "from": "kernel-tun",
       "to": "routes",
       "label": "route add/del",
+      "labelAt": [305, 314],
       "fromSide": "bottom",
       "toSide": "top",
       "variant": "dashed"

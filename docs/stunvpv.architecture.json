@@ -162,6 +162,10 @@
       "from": "client-a",
       "to": "client-b",
       "label": "UDP 打洞直连",
+      "labelAt": [
+        130,
+        214
+      ],
       "variant": "dashed"
     },
     {
@@ -175,7 +179,19 @@
       "id": "c5",
       "from": "turn-srv",
       "to": "ipalloc",
-      "label": "分配 VIP"
+      "label": "分配 VIP",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          535,
+          400
+        ],
+        [
+          530,
+          400
+        ]
+      ]
     },
     {
       "id": "c6",
@@ -195,7 +211,23 @@
       "id": "c8",
       "from": "client-a",
       "to": "tun-bridge",
-      "label": "OnData"
+      "label": "OnData",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          350,
+          170
+        ],
+        [
+          350,
+          240
+        ],
+        [
+          1040,
+          240
+        ]
+      ]
     }
   ],
   "cards": [

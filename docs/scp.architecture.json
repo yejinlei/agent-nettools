@@ -136,7 +136,9 @@
       "id": "c2",
       "from": "scp-cmd",
       "to": "mem",
-      "label": "读/写 alias"
+      "label": "读/写 alias",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "c3",
