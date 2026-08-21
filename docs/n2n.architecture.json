@@ -6,8 +6,8 @@
     "output": "n2n.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1080,
-      520
+      1180,
+      560
     ]
   },
   "components": [
@@ -149,25 +149,19 @@
       "from": "edge-a",
       "to": "edge-b",
       "label": "Data 转发 (直连)",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
       "id": "c4",
       "from": "supernode",
       "to": "ipalloc",
-      "label": "分配虚拟 IP",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "分配虚拟 IP"
     },
     {
       "id": "c5",
       "from": "crypto",
       "to": "edge-a",
       "label": "加密/解密",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
@@ -175,17 +169,13 @@
       "from": "heartbeat",
       "to": "edge-b",
       "label": "keepalive",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
       "id": "c7",
       "from": "edge-a",
       "to": "tun-bridge",
-      "label": "OnData",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "OnData"
     }
   ],
   "cards": [

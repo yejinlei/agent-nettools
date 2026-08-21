@@ -136,9 +136,7 @@
       "id": "c2",
       "from": "scp-cmd",
       "to": "mem",
-      "label": "读/写 alias",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "读/写 alias"
     },
     {
       "id": "c3",
@@ -157,8 +155,6 @@
       "from": "hil",
       "to": "scp-cmd",
       "label": "用户输入凭证",
-      "fromSide": "bottom",
-      "toSide": "top",
       "variant": "dashed"
     },
     {
@@ -166,8 +162,6 @@
       "from": "agent-tools",
       "to": "ssh",
       "label": "复用 FileTransfer",
-      "fromSide": "bottom",
-      "toSide": "top",
       "variant": "dashed"
     }
   ],

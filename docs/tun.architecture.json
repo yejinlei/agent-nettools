@@ -6,8 +6,8 @@
     "output": "tun.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1080,
-      520
+      1200,
+      560
     ]
   },
   "components": [
@@ -144,8 +144,6 @@
       "id": "c3",
       "from": "read-loop",
       "to": "parse",
-      "fromSide": "bottom",
-      "toSide": "top",
       "label": "解析目标 IP",
       "variant": "dashed"
     },

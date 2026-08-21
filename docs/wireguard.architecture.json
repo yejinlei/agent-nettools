@@ -6,8 +6,8 @@
     "output": "wireguard.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1080,
-      520
+      1180,
+      560
     ]
   },
   "components": [
@@ -159,8 +159,6 @@
       "from": "curve25519",
       "to": "peer-a",
       "label": "公私钥对",
-      "fromSide": "bottom",
-      "toSide": "top",
       "variant": "dashed"
     },
     {
@@ -168,25 +166,19 @@
       "from": "curve25519",
       "to": "peer-b",
       "label": "公私钥对",
-      "fromSide": "bottom",
-      "toSide": "top",
       "variant": "dashed"
     },
     {
       "id": "c5",
       "from": "psk",
       "to": "hkdf",
-      "label": "输入 PSK",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "输入 PSK"
     },
     {
       "id": "c6",
       "from": "aead",
       "to": "hkdf",
       "label": "派生 AEAD 密钥",
-      "fromSide": "bottom",
-      "toSide": "top",
       "variant": "dashed"
     },
     {

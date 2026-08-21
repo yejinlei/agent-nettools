@@ -6,8 +6,8 @@
     "output": "sysproxy.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1000,
-      500
+      1180,
+      560
     ]
   },
   "components": [
@@ -131,33 +131,25 @@
       "id": "c1",
       "from": "cmd",
       "to": "win-reg",
-      "label": "写 ProxyEnable/ProxyServer",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "写 ProxyEnable/ProxyServer"
     },
     {
       "id": "c2",
       "from": "cmd",
       "to": "win-netsh",
-      "label": "netsh set proxy",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "netsh set proxy"
     },
     {
       "id": "c3",
       "from": "cmd",
       "to": "linux-gsettings",
-      "label": "gsettings set",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "gsettings set"
     },
     {
       "id": "c4",
       "from": "cmd",
       "to": "env-vars",
       "label": "source ~/.proxy.env",
-      "fromSide": "right",
-      "toSide": "left",
       "variant": "dashed"
     },
     {
@@ -165,16 +157,12 @@
       "from": "win-netsh",
       "to": "sys-app",
       "label": "拦截所有流量",
-      "fromSide": "right",
-      "toSide": "left",
       "labelDy": -40
     },
     {
       "id": "c6",
       "from": "agent",
       "to": "cmd",
-      "fromSide": "right",
-      "toSide": "right",
       "label": "共用 sysproxy 包"
     }
   ],

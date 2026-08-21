@@ -6,8 +6,8 @@
     "output": "stunvpv.html",
     "quality_profile": "showcase",
     "viewBox": [
-      1080,
-      520
+      1180,
+      560
     ]
   },
   "components": [
@@ -162,8 +162,6 @@
       "from": "client-a",
       "to": "client-b",
       "label": "UDP 打洞直连",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
@@ -171,25 +169,19 @@
       "from": "stun-lib",
       "to": "client-a",
       "label": "STUN binding",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
       "id": "c5",
       "from": "turn-srv",
       "to": "ipalloc",
-      "label": "分配 VIP",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "分配 VIP"
     },
     {
       "id": "c6",
       "from": "nat-ping",
       "to": "client-b",
       "label": "ping 探测",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
@@ -197,17 +189,13 @@
       "from": "turn-relay",
       "to": "client-a",
       "label": "回退转发",
-      "fromSide": "right",
-      "toSide": "right",
       "variant": "dashed"
     },
     {
       "id": "c8",
       "from": "client-a",
       "to": "tun-bridge",
-      "label": "OnData",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "OnData"
     }
   ],
   "cards": [

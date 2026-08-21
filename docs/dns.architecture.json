@@ -138,25 +138,19 @@
       "from": "dns-srv",
       "to": "cache",
       "label": "读缓存",
-      "fromSide": "top",
-      "toSide": "bottom",
       "labelDy": -30
     },
     {
       "id": "c3",
       "from": "dns-srv",
       "to": "upstream-doh",
-      "label": "recursor DoH",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "recursor DoH"
     },
     {
       "id": "c4",
       "from": "dns-srv",
       "to": "upstream-dot",
       "label": "recursor DoT",
-      "fromSide": "right",
-      "toSide": "left",
       "variant": "dashed"
     },
     {
@@ -164,8 +158,6 @@
       "from": "dns-srv",
       "to": "fakeip",
       "label": "fakeip 分配",
-      "fromSide": "bottom",
-      "toSide": "top",
       "variant": "dashed"
     },
     {

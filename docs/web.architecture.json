@@ -124,9 +124,7 @@
       "id": "c2",
       "from": "auth",
       "to": "srv",
-      "label": "Basic Auth 校验",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "Basic Auth 校验"
     },
     {
       "id": "c3",
@@ -138,26 +136,20 @@
       "id": "c4",
       "from": "api",
       "to": "logs",
-      "label": "GET /api/logs",
-      "fromSide": "top",
-      "toSide": "bottom"
+      "label": "GET /api/logs"
     },
     {
       "id": "c5",
       "from": "api",
       "to": "stats",
-      "label": "GET /api/stats",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "GET /api/stats"
     },
     {
       "id": "c6",
       "from": "logs",
       "to": "stats",
       "label": "共享 ctx",
-      "variant": "dashed",
-      "fromSide": "right",
-      "toSide": "left"
+      "variant": "dashed"
     }
   ],
   "cards": [
