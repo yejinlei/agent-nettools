@@ -338,10 +338,16 @@ func tuiCmd() *cobra.Command {
 				cwd, _ := os.Getwd()
 				cfgPath = filepath.Join(cwd, "config.yml")
 			}
-			// main proxy config (rules, proxies, groups, ...) — used by tools
-			cfg, err := config.Load(cfgPath)
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
+			// Main proxy config is only needed by tools like gen_config / use_config
+			// that write back to cfgPath. tui itself only needs agent.yml.
+			// If config.yml is missing, start empty; it will be created on first write.
+			cfg := &config.Config{}
+			if _, err := os.Stat(cfgPath); err == nil {
+				var err error
+				cfg, err = config.Load(cfgPath)
+				if err != nil {
+					return fmt.Errorf("load config: %w", err)
+				}
 			}
 
 			// LLM settings: prefer standalone agent.yml; fall back to cfg.Agent
@@ -352,7 +358,7 @@ func tuiCmd() *cobra.Command {
 			if aPath == "" {
 				aPath = filepath.Join(filepath.Dir(cfgPath), agent.DefaultAgentConfigPath)
 			}
-			ca, aPath, err = agent.LoadAgentConfig(aPath)
+			ca, aPath, err := agent.LoadAgentConfig(aPath)
 			if err != nil {
 				// agent.yml absent — fall back to legacy cfg.Agent block in config.yml.
 				ca = agent.ConfigAgent{
