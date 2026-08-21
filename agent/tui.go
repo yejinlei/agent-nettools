@@ -168,7 +168,7 @@ var cliSubcommands = []struct {
 }{
 	{"/init",        true,  "生成示例配置到当前目录"},
 	{"/status",      true,  "显示当前配置"},
-	{"/ping",        true,  "测试代理延迟"},
+	{"/ping",        true,  "测试代理延迟: /ping [url] [--proxy <url>]"},
 	{"/use",         true,  "切换手动分组: /use <group> <proxy>"},
 	{"/sysproxy",    false, "系统代理: /sysproxy on|off|status [addr]"},
 	{"/start",       false, "启动所有启用的服务"},
@@ -269,7 +269,7 @@ func (t *tui) showAllCommands() {
 	fmt.Println()
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/init"),        "生成示例配置到当前目录")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/status"),      "显示当前配置")
-	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/ping"),        "测试代理延迟")
+	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/ping"),        "测试代理延迟 (/ping [url] [--proxy <url>])")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/use"),         "切换手动分组")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/sysproxy"),    "系统代理 on/off/status")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/start"),       "启动所有启用的服务")
@@ -561,12 +561,6 @@ func (t *tui) run(ctx context.Context) error {
 	panic("unreachable")
 }
 
-const asciiLogo = `
-  ╭────────────────────────────────────────────────────╮
-  │   ⚡  agent-netx  ·  自然语言驱动的网络工具  ⚡       │
-  │         github.com/yejinlei/agent-netx              │
-  ╰────────────────────────────────────────────────────╯`
-
 func (t *tui) renderHeader() {
 	w := termWidth - 2
 	if w < 60 {
@@ -587,13 +581,6 @@ func (t *tui) renderHeader() {
 		sessLabel = id + " · " + t.session.Name
 	}
 
-	logoLines := strings.Split(strings.TrimLeft(asciiLogo, "\n"), "\n")
-	var paddedLogo []string
-	for _, ln := range logoLines {
-		padded := ln + strings.Repeat(" ", w-printableLen(ln))
-		paddedLogo = append(paddedLogo, padded)
-	}
-
 	title := sTitle.Render("  Welcome to agent-netx!")
 	verLine := sSubtitle.Render("  Version:   ") + sVersion.Render(ver)
 	dirLine := sSubtitle.Render("  Directory: ") + wd
@@ -605,9 +592,6 @@ func (t *tui) renderHeader() {
 	content := title + "\n" + dirLine + "\n" + sessLine + "\n" + verLine + "\n" + modelLine + "\n" + helpLine
 
 	fmt.Println()
-	for _, ln := range paddedLogo {
-		fmt.Println(sHeaderBar.Render(ln))
-	}
 	fmt.Println(sHeaderBar.Render("┌" + strings.Repeat("─", w) + "┐"))
 
 	lines := strings.Split(content, "\n")

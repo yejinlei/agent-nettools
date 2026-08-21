@@ -28,7 +28,6 @@ func init() {
 	// --config is persistent so every subcommand (start, tui, proxy, dns, ...)
 	// can read the same config path via cmd.Flags().GetString("config").
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to config file")
-	startCmd().Flags().StringVar(&proxyURL, "proxy", "", "fast mode: proxy URL string (e.g. ss://aes-256-gcm:pass@host:port)")
 }
 
 var rootCmd = &cobra.Command{
@@ -86,6 +85,7 @@ func startCmd() *cobra.Command {
 			return fullStart(cmd)
 		},
 	}
+	cmd.Flags().StringVar(&proxyURL, "proxy", "", "fast mode: proxy URL string (e.g. ss://aes-256-gcm:pass@host:port)")
 	return cmd
 }
 
@@ -266,25 +266,88 @@ func statusCmd() *cobra.Command {
 }
 
 func pingCmd() *cobra.Command {
+	var extraProxy string
 	cmd := &cobra.Command{
-		Use:   "ping",
-		Short: "Test proxy latency",
+		Use:   "ping [URL]",
+		Short: "Test proxy latency against each configured proxy",
+		Long: `Test latency from each proxy to the given URL.
+Defaults to https://www.gstatic.com/generate_204 when no URL is provided.
+
+With a config file (-c): pings every proxy in it.
+Without a config: use --proxy to test a single proxy URL.
+
+Examples:
+  agent-netx ping https://www.baidu.com
+  agent-netx ping https://www.baidu.com --proxy ss://aes-256-gcm:pass@host:port
+  agent-netx ping --proxy http://user:pass@host:port`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			url := "https://www.gstatic.com/generate_204"
+			if len(args) >= 1 {
+				url = args[0]
+			}
+
+			var reg *proxy.Registry
 			cfgPath, _ := cmd.Flags().GetString("config")
-			if cfgPath == "" {
-				cwd, _ := os.Getwd()
-				cfgPath = filepath.Join(cwd, "config.yml")
+
+			if extraProxy != "" {
+				// Build a registry from --proxy (single probe). Optionally merge
+				// with the config registry if a config file exists.
+				u, err := parseProxyURL(extraProxy)
+				if err != nil {
+					return fmt.Errorf("parse --proxy URL: %w", err)
+				}
+				pcfg := config.ProxyConfig{
+					Name:   u.Scheme,
+					Type:   u.Scheme,
+					Server: u.Hostname(),
+					Port:   mustPort(u.Port()),
+				}
+				switch u.Scheme {
+				case "ss":
+					pcfg.Cipher = u.User.Username()
+					pass, _ := u.User.Password()
+					pcfg.Password = pass
+				case "http", "https":
+					pcfg.Username = u.User.Username()
+					pcfg.Password, _ = u.User.Password()
+				case "socks5":
+					pcfg.Username = u.User.Username()
+					pcfg.Password, _ = u.User.Password()
+				case "trojan":
+					pcfg.Password = u.User.Username()
+					pcfg.SNI = u.Query().Get("sni")
+				}
+				var pcfgs []config.ProxyConfig
+				if cfgPath != "" {
+					if _, err := os.Stat(cfgPath); err == nil {
+						if cfg, err := config.Load(cfgPath); err == nil {
+							pcfgs = append(pcfgs, cfg.Proxies...)
+						}
+					}
+				}
+				pcfgs = append(pcfgs, pcfg)
+				reg, err = proxy.Register(pcfgs)
+				if err != nil {
+					return fmt.Errorf("register proxies: %w", err)
+				}
+			} else {
+				// Config-required path (legacy behavior).
+				if cfgPath == "" {
+					cwd, _ := os.Getwd()
+					cfgPath = filepath.Join(cwd, "config.yml")
+				}
+				cfg, err := config.Load(cfgPath)
+				if err != nil {
+					return fmt.Errorf("load config: %w\nHint: use --proxy <url> to ping without a config file", err)
+				}
+				reg, err = proxy.Register(cfg.Proxies)
+				if err != nil {
+					return fmt.Errorf("register proxies: %w", err)
+				}
 			}
-			cfg, err := config.Load(cfgPath)
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
-			}
-			reg, err := proxy.Register(cfg.Proxies)
-			if err != nil {
-				return fmt.Errorf("register proxies: %w", err)
-			}
+
 			reg.Each(func(name string, p proxy.Proxy) {
-				l, err := p.Latency("https://www.gstatic.com/generate_204")
+				l, err := p.Latency(url)
 				if err != nil {
 					fmt.Printf("  %-20s ERROR: %s\n", name, err.Error())
 				} else {
@@ -294,6 +357,7 @@ func pingCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&extraProxy, "proxy", "", "test a single proxy URL (e.g. ss://aes-256-gcm:pass@host:port) — usable without a config file")
 	return cmd
 }
 
