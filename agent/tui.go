@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
@@ -312,74 +313,100 @@ func (t *tui) readLine(rawMode bool) (string, error) {
 
 	var buf []byte
 loop:
-	for {
-		b := make([]byte, 1)
-		n, err := os.Stdin.Read(b)
-		if n == 0 {
+		for {
+			runeBytes, err := readUtf8Rune(os.Stdin)
 			if err != nil {
 				return "", err
 			}
-			continue
-		}
-		ch := b[0]
-		switch ch {
-		case 13:
-			break loop
-		case 10:
-			continue
-		case 4:
-			return "", io.EOF
-		case 3:
-			return "", fmt.Errorf("cancelled")
-		case 127, 8:
-			if len(buf) > 0 {
-				buf = buf[:len(buf)-1]
-				fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
-			}
-		case 27:
-			inner := make([]byte, 3)
-			n2, _ := os.Stdin.Read(inner)
-			if n2 == 0 || inner[0] != '[' {
+
+			switch runeBytes[0] {
+			case 13:
+				break loop
+			case 10:
 				continue
-			}
-			key := inner[1]
-			if n2 >= 3 && key == 'O' {
-				key = inner[2]
-			}
-			switch key {
-			case 'A':
-				if len(t.history) > 0 && t.histIdx > 0 {
-					t.histIdx--
-					buf = []byte(t.history[t.histIdx])
-					fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
-				}
-			case 'B':
-				if t.histIdx < len(t.history)-1 {
-					t.histIdx++
-					buf = []byte(t.history[t.histIdx])
-					fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
-				}
-			case 'D':
-				if len(buf) == 0 {
-					return "", io.EOF
-				}
-				buf = buf[:len(buf)-1]
-				fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
-			case 'H':
+			case 4:
+				return "", io.EOF
+			case 3:
+				return "", fmt.Errorf("cancelled")
+			case 127, 8:
 				if len(buf) > 0 {
-					buf = buf[:len(buf)-1]
-					fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
+					_, sz := utf8.DecodeLastRune(buf)
+					buf = buf[:len(buf)-sz]
+					fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
 				}
-			}
-		default:
-			if ch >= 32 {
-				buf = append(buf, ch)
-				fmt.Print(string(ch))
+			case 27:
+				inner := make([]byte, 3)
+				n2, _ := os.Stdin.Read(inner)
+				if n2 == 0 || inner[0] != '[' {
+					continue
+				}
+				key := inner[1]
+				if n2 >= 3 && key == 'O' {
+					key = inner[2]
+				}
+				switch key {
+				case 'A':
+					if len(t.history) > 0 && t.histIdx > 0 {
+						t.histIdx--
+						buf = []byte(t.history[t.histIdx])
+						fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
+					}
+				case 'B':
+					if t.histIdx < len(t.history)-1 {
+						t.histIdx++
+						buf = []byte(t.history[t.histIdx])
+						fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
+					}
+				case 'D':
+					if len(buf) == 0 {
+						return "", io.EOF
+					}
+					_, sz := utf8.DecodeLastRune(buf)
+					buf = buf[:len(buf)-sz]
+					fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
+				case 'H':
+					if len(buf) > 0 {
+						_, sz := utf8.DecodeLastRune(buf)
+						buf = buf[:len(buf)-sz]
+						fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
+					}
+				}
+			default:
+				if runeBytes[0] >= 32 {
+					buf = append(buf, runeBytes...)
+					fmt.Print(string(runeBytes))
+				}
 			}
 		}
+		fmt.Println()
+		return string(buf), nil
 	}
-	fmt.Println()
-	return string(buf), nil
+
+// readUtf8Rune reads a single UTF-8 rune (1–4 bytes) from r.
+func readUtf8Rune(r io.Reader) ([]byte, error) {
+	first := make([]byte, 1)
+	if _, err := r.Read(first); err != nil {
+		return nil, err
+	}
+	b := first[0]
+	switch {
+	case b < 0x80:
+		return first, nil
+	case b < 0xE0:
+		return readUtf8Tail(r, first, 1)
+	case b < 0xF0:
+		return readUtf8Tail(r, first, 2)
+	default:
+		return readUtf8Tail(r, first, 3)
+	}
+}
+
+func readUtf8Tail(r io.Reader, prefix []byte, n int) ([]byte, error) {
+	tail := make([]byte, n)
+	if _, err := r.Read(tail); err != nil {
+		return prefix, err
+	}
+	return append(prefix, tail...), nil
 }
 
 func (t *tui) thinkLoop(ctx context.Context, rawMode bool) (Message, error) {
