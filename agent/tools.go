@@ -44,6 +44,7 @@ func NewRegistry(cfg Config, mem *Memory, ask askFunc) *Registry {
 		ask:   ask,
 	}
 	r.register()
+	r.registerExtra()
 	return r
 }
 

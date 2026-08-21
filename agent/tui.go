@@ -92,19 +92,21 @@ func initStyles() {
 
 type tui struct {
 	cfg      Config
+	ctx      context.Context
 	mem      *Memory
 	registry *Registry
 	llm      *LLM
 	msgs     []Message
 	history  []string
 	histIdx  int
+	tabIdx   int
 	turns    int
 	tools    int
 	store    *SessionStore
 	session  *Session
 }
 
-func newTUI(cfg Config) *tui {
+func newTUI(ctx context.Context, cfg Config) *tui {
 	mem := NewMemory(cfg.MemoryPath)
 	ask := promptOrSilent()
 	registry := NewRegistry(cfg, mem, ask)
@@ -137,6 +139,7 @@ func newTUI(cfg Config) *tui {
 
 	return &tui{
 		cfg:      cfg,
+		ctx:      ctx,
 		mem:      mem,
 		registry: registry,
 		llm:      llm,
@@ -388,6 +391,22 @@ func (t *tui) handleCommand(line string) bool {
 		t.histIdx = 0
 		t.renderPrompt("")
 		t.renderAILine("当前会话已清空")
+		return true
+
+	case "/add-proxy":
+		t.addProxyCmd(arg)
+		return true
+
+	case "/add-rule":
+		t.addRuleCmd(arg)
+		return true
+
+	case "/session-export":
+		t.sessionExportCmd(arg)
+		return true
+
+	case "/session-import":
+		t.sessionImportCmd(arg)
 		return true
 	}
 
@@ -749,6 +768,7 @@ func (t *tui) renderGoodbye() {
 }
 
 func (t *tui) readLine(rawMode bool) (string, error) {
+	t.resetTab()
 	t.renderPrompt("")
 	if !rawMode {
 		var buf strings.Builder
@@ -784,6 +804,9 @@ loop:
 			return "", err
 		}
 		switch runeBytes[0] {
+		case 9: // TAB
+			t.completeTab(&buf)
+			continue
 		case 13:
 			break loop
 		case 10:
@@ -908,7 +931,7 @@ func (t *tui) thinkLoop(ctx context.Context, rawMode bool) (Message, error) {
 }
 
 func RunTUI(ctx context.Context, cfg Config) error {
-	t := newTUI(cfg)
+	t := newTUI(ctx, cfg)
 	return t.run(ctx)
 }
 

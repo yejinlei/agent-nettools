@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"agent-netx/agent"
 	"agent-netx/config"
 	"agent-netx/dns"
 	"agent-netx/listener"
@@ -25,6 +26,9 @@ import (
 // `service` tool spawns/stops these same commands from inside the TUI.
 
 func buildRouter(cfg *config.Config) (*router.Router, *proxy.Registry, error) {
+	if err := config.MergeDynamic(cfg, agent.DynamicPath()); err != nil {
+		return nil, nil, fmt.Errorf("merge dynamic config: %w", err)
+	}
 	reg, err := proxy.Register(cfg.Proxies)
 	if err != nil {
 		return nil, nil, fmt.Errorf("register proxies: %w", err)
@@ -33,6 +37,11 @@ func buildRouter(cfg *config.Config) (*router.Router, *proxy.Registry, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("init router: %w", err)
 	}
+	reg.Each(func(name string, p proxy.Proxy) {
+		if ut, ok := p.(*proxy.URLTest); ok {
+			ut.Probe()
+		}
+	})
 	return rtr, reg, nil
 }
 

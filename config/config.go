@@ -598,3 +598,44 @@ model: "gpt-4o-mini"
 # Optional custom system prompt (default has full instructions)
 # system-prompt: ""
 `
+// DynamicSpec is the overlay shape written to ~/.agent-netx/dynamic.yml by the
+// add_proxy / add_rule agent tools. Merging it onto a base config makes
+// runtime additions visible to both the TUI flow and standalone proxies.
+type DynamicSpec struct {
+	Proxies []ProxyConfig `yaml:"proxies"`
+	Rules   []string      `yaml:"rules"`
+}
+
+// MergeDynamic reads a dynamic-spec file and appends its proxies/rules to cfg.
+// Nonexistent files are a no-op. cfg must be non-nil.
+func MergeDynamic(cfg *Config, path string) error {
+	if path == "" {
+		return nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	spec := DynamicSpec{}
+	if err := yaml.Unmarshal(b, spec); err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	for _, p := range cfg.Proxies {
+		seen[p.Name] = true
+	}
+	for _, p := range spec.Proxies {
+		if p.Name == "" { continue }
+		if seen[p.Name] { continue } // base config wins on name collision
+		cfg.Proxies = append(cfg.Proxies, p)
+		seen[p.Name] = true
+	}
+	for _, r := range spec.Rules {
+		if r == "" { continue }
+		cfg.Rules = append(cfg.Rules, r)
+	}
+	return nil
+}

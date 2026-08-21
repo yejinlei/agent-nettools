@@ -132,3 +132,8 @@ func (r *RejectProxy) Name() string { return "REJECT" }
 func (r *RejectProxy) Connect(ctx context.Context, addr string) (net.Conn, error) { return nil, fmt.Errorf("REJECT") }
 func (r *RejectProxy) Latency(url string) (time.Duration, error) { return 0, fmt.Errorf("REJECT") }
 func (r *RejectProxy) Close() error { return nil }
+func (r *Registry) Unregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.proxies, strings.ToLower(name))
+}

@@ -1,13 +1,16 @@
 package router
 
 import (
+	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"agent-netx/proxy"
 )
 
 type Router struct {
+	mu       sync.Mutex
 	mode     string
 	rules    []Rule
 	proxyReg *proxy.Registry
@@ -34,14 +37,52 @@ func New(mode string, rawRules []string, reg *proxy.Registry) (*Router, error) {
 }
 
 func (r *Router) Pick(addr string) (proxy.Proxy, error) {
-	if r.mode == "direct" { return r.proxyReg.Get("DIRECT") }
-	if r.mode == "global" { return r.selectFirst() }
+	r.mu.Lock()
+	mode, rules := r.mode, r.rules
+	r.mu.Unlock()
+
+	if mode == "direct" { return r.proxyReg.Get("DIRECT") }
+	if mode == "global" { return r.selectFirst() }
 	host := addr
 	if h, _, err := net.SplitHostPort(addr); err == nil { host = h }
-	for _, rule := range r.rules {
+	for _, rule := range rules {
 		if r.match(host, rule) { return r.proxyReg.Get(rule.Target) }
 	}
 	return r.selectFirst()
+}
+
+// AddRule appends a rule to the front of the rule list (highest priority).
+// This is the runtime mutation path used by the `add_rule` agent tool and
+// `/add-rule` TUI command so new rules take effect without restarting.
+func (r *Router) AddRule(raw string) {
+	parts := strings.SplitN(raw, ",", 3)
+	if len(parts) < 3 { return }
+	rule := Rule{
+		Type:    strings.ToUpper(strings.TrimSpace(parts[0])),
+		Pattern: strings.TrimSpace(parts[1]),
+		Target:  strings.TrimSpace(parts[2]),
+	}
+	r.mu.Lock()
+	r.rules = append([]Rule{rule}, r.rules...)
+	r.mu.Unlock()
+}
+
+// AddProxy registers a proxy into the underlying registry so it becomes
+// immediately pickable by rules and groups. This is the runtime mutation path
+// used by the `add_proxy` agent tool and `/add-proxy` TUI command.
+func (r *Router) AddProxy(p proxy.Proxy) error {
+	_, err := r.proxyReg.Get(p.Name())
+	if err == nil {
+		return fmt.Errorf("proxy %q already registered", p.Name())
+	}
+	r.proxyReg.Register(p)
+	return nil
+}
+
+// RemoveProxy unregisters a proxy from the registry. Safe to call even if the
+// proxy is not present.
+func (r *Router) RemoveProxy(name string) {
+	r.proxyReg.Unregister(name)
 }
 
 func (r *Router) match(host string, rule Rule) bool {
