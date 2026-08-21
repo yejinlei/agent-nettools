@@ -185,6 +185,7 @@ var cliSubcommands = []struct {
 	{"/corsproxy",   false, "启动 CORS 代理"},
 	{"/forward",     false, "端口转发 (-L/-R/-D/-U/tls)"},
 	{"/scp",         true,  "SSH 文件拷贝"},
+	{"/run",         true,  "本地/远端执行命令: /run local|remote --cmd <cmd> [--alias/--host]"},
 	{"/netdiag",     true,  "网络诊断: /netdiag conns|listeners|stats|packets"},
 	{"/logs",        true,  "运行时日志: /logs [n]"},
 	{"/validate",    true,  "校验配置文件"},
@@ -286,6 +287,7 @@ func (t *tui) showAllCommands() {
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/corsproxy"),   "启动 CORS 代理")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/forward"),     "端口转发 (-L/-R/-D/-U/tls)")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/scp"),         "SSH 文件拷贝")
+	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/run"),         "本地/远端执行命令")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/netdiag"),     "网络诊断 (conns/listeners/stats/packets)")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/logs"),        "运行时日志 (/logs [n] /logs follow)")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/validate"),    "校验配置文件")

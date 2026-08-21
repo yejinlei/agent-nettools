@@ -512,6 +512,7 @@ func Execute() {
 	rootCmd.AddCommand(corsproxyCmd())
 	// Standalone SSH/SFTP file copy (non-TUI tool; shares memory with the agent).
 	rootCmd.AddCommand(scpCmd())
+	rootCmd.AddCommand(runCmd())
 	rootCmd.AddCommand(netdiagCmd())
 	rootCmd.AddCommand(logsCmd())
 	rootCmd.AddCommand(validateCmd())

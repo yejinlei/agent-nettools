@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 
 	"golang.org/x/sys/unix"
@@ -21,12 +22,16 @@ import (
 //
 // Original destination extraction: after unix.Accept we issue a zero-length
 // recvmsg with MSG_PEEK; the kernel attaches an IP_ORIGDSTADDR cmsg carrying
-// the SockaddrInet4 of the originally-targeted endpoint. We return that as
-// the net.Addr so serveTProxy can feed it to Router.Pick.
+// the originally-targeted endpoint. We return that as a *net.TCPAddr so
+// serveTProxy can feed it to Router.Pick.
 func tproxyListen(addr string) (net.Listener, error) {
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM|unix.SOCK_REUSEADDR, unix.IPPROTO_TCP)
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM, unix.IPPROTO_TCP)
 	if err != nil {
 		return nil, fmt.Errorf("tproxy socket: %w", err)
+	}
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
+		unix.Close(fd)
+		return nil, fmt.Errorf("tproxy setsockopt SO_REUSEADDR: %w", err)
 	}
 	if err := unix.SetsockoptInt(fd, unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
 		unix.Close(fd)
@@ -37,11 +42,12 @@ func tproxyListen(addr string) (net.Listener, error) {
 		unix.Close(fd)
 		return nil, err
 	}
-	sa, err := unix.RunningAddr(lsa)
-	if err != nil {
+	ip4 := lsa.IP.To4()
+	if ip4 == nil {
 		unix.Close(fd)
-		return nil, err
+		return nil, fmt.Errorf("tproxy bind %s: not an IPv4 address", addr)
 	}
+	sa := &unix.SockaddrInet4{Port: lsa.Port, Addr: [4]byte(ip4)}
 	if err := unix.Bind(fd, sa); err != nil {
 		unix.Close(fd)
 		return nil, fmt.Errorf("tproxy bind %s: %w", addr, err)
@@ -54,10 +60,10 @@ func tproxyListen(addr string) (net.Listener, error) {
 }
 
 type tproxyListener struct {
-	fd   int
-	mu   sync.Mutex
+	fd     int
+	mu     sync.Mutex
 	closed bool
-	addr *net.TCPAddr
+	addr   *net.TCPAddr
 }
 
 func (l *tproxyListener) Accept() (net.Conn, error) {
@@ -66,32 +72,21 @@ func (l *tproxyListener) Accept() (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Set IP_TRANSPARENT on the accepted socket so the kernel knows we
-		// will be sending on behalf of the original source.
 		if err := unix.SetsockoptInt(cfd, unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
 			unix.Close(cfd)
 			continue
 		}
-		// Original destination (the address the client intended to hit).
 		orig := origDst(cfd)
 		if orig == nil {
-			// Fall back to the peer addr (works when orig-dst is unavailable).
-			orig, err = unix.Getpeername(cfd)
-			if err != nil {
+			if orig, err = peerTCPAddr(cfd); err != nil {
 				unix.Close(cfd)
 				continue
 			}
 		}
-		pa, ok := orig.(*unix.SockaddrInet4)
-		if !ok {
-			unix.Close(cfd)
-			continue
-		}
-		// Wrap cfd in a net.Conn using net.FileConn.
-		f := unix.NewFile(uintptr(cfd), fmt.Sprintf("tproxy-conn-%d", cfd))
+		f := os.NewFile(uintptr(cfd), fmt.Sprintf("tproxy-conn-%d", cfd))
 		conn, err := net.FileConn(f)
+		f.Close()
 		if err != nil {
-			f.Close()
 			return nil, err
 		}
 		tc, ok := conn.(net.Conn)
@@ -99,10 +94,7 @@ func (l *tproxyListener) Accept() (net.Conn, error) {
 			conn.Close()
 			return nil, fmt.Errorf("net.FileConn returned non-Conn")
 		}
-		return &tproxyConn{Conn: tc, orig: &net.TCPAddr{
-			IP:   net.IP(pa.Addr[:]),
-			Port: int(binary.BigEndian.Uint16(pa.Port[:])),
-		}}, nil
+		return &tproxyConn{Conn: tc, orig: orig}, nil
 	}
 }
 
@@ -118,8 +110,6 @@ func (l *tproxyListener) Close() error {
 
 func (l *tproxyListener) Addr() net.Addr { return l.addr }
 
-// tproxyConn wraps a raw net.Conn and exposes the original destination as
-// RemoteAddr, so serveTProxy can hand that address to Router.Pick.
 type tproxyConn struct {
 	net.Conn
 	orig *net.TCPAddr
@@ -127,13 +117,21 @@ type tproxyConn struct {
 
 func (c *tproxyConn) RemoteAddr() net.Addr { return c.orig }
 
-// origDst issues a zero-length recvmsg(MSG_PEEK) and parses the
-// IP_ORIGDSTADDR control message to recover the originally-targeted address.
-// If the control message is not present (e.g. no TPROXY rule), it returns nil.
-func origDst(fd int) net.Addr {
+func peerTCPAddr(fd int) (*net.TCPAddr, error) {
+	sa, err := unix.Getpeername(fd)
+	if err != nil {
+		return nil, err
+	}
+	pa, ok := sa.(*unix.SockaddrInet4)
+	if !ok {
+		return nil, fmt.Errorf("peer addr is not IPv4: %T", sa)
+	}
+	return &net.TCPAddr{IP: net.IP(pa.Addr[:]), Port: pa.Port}, nil
+}
+
+func origDst(fd int) *net.TCPAddr {
 	oob := make([]byte, 1024)
-	n, oobn, _, _, err := unix.Recvmsg(nil, oob, unix.MSG_PEEK)
-	_ = n
+	_, oobn, _, _, err := unix.Recvmsg(fd, nil, oob, unix.MSG_PEEK)
 	if err != nil || oobn == 0 {
 		return nil
 	}
@@ -153,10 +151,9 @@ func origDst(fd int) net.Addr {
 		if family != unix.AF_INET {
 			continue
 		}
-		return &unix.SockaddrInet4{
-			Family: unix.AF_INET,
-			Port:   uint16(port),
-			Addr:   [4]byte(msg.Data[4:8]),
+		return &net.TCPAddr{
+			IP:   net.IPv4(msg.Data[4], msg.Data[5], msg.Data[6], msg.Data[7]),
+			Port: int(port),
 		}
 	}
 	return nil

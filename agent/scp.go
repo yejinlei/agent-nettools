@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"path/filepath"
 	"strings"
 	"time"
@@ -264,4 +266,64 @@ func orAlias(alias string) string {
 		return alias
 	}
 	return "新主机"
+}
+
+// RunRemote opens an SSH session on h, runs cmd, and streams stdout/stderr
+// through to stdout. It reuses dialSSH so password/key/known-hosts policy are
+// the same as FileTransfer. timeout 0 means no timeout.
+func RunRemote(ctx context.Context, h HostInfo, cmd string) error {
+	sshClient, err := dialSSH(ctx, h)
+	if err != nil {
+		return err
+	}
+	defer sshClient.Close()
+
+	session, err := sshClient.NewSession()
+	if err != nil {
+		return fmt.Errorf("ssh session: %w", err)
+	}
+	defer session.Close()
+
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- session.Run(cmd) }()
+	select {
+	case err := <-errCh:
+		if _, ok := err.(*ssh.ExitError); ok {
+			return fmt.Errorf("remote command exited %w", err)
+		}
+		if err != nil {
+			return fmt.Errorf("remote command: %w", err)
+		}
+		return nil
+	case <-ctx.Done():
+		_ = session.Signal(ssh.SIGKILL)
+		<-errCh
+		return ctx.Err()
+	}
+}
+
+// RunLocal executes a command locally via the platform's default shell.
+// On Windows it runs cmd.exe /c cmd; on Unix it runs /bin/sh -c cmd.
+// timeout 0 means no timeout.
+func RunLocal(ctx context.Context, cmd string) error {
+	var execName, execArg string
+	if runtime.GOOS == "windows" {
+		execName = "cmd.exe"
+		execArg = "/c"
+	} else {
+		execName = "/bin/sh"
+		execArg = "-c"
+	}
+
+	c := exec.CommandContext(ctx, execName, execArg, cmd)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	c.Stdin = os.Stdin
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("local command: %w", err)
+	}
+	return nil
 }

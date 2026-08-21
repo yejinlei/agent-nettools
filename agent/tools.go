@@ -829,6 +829,85 @@ netdiag    查看进程网络端口和数据包（netstat / ss / tcpdump 等价�
 			return sb.String()
 		}
 
+		// run_local: execute a shell command on this machine via the platform
+		// default shell (cmd.exe /c on Windows, /bin/sh -c on Unix). Used when
+		// the agent wants to start/stop a local service (n2n, frp, wireguard)
+		// without touching config.yml.
+		r.defs = append(r.defs, ToolDef{
+			Name:        "run_local",
+			Description: "在本机 shell 执行命令 (Win: cmd.exe /c; Unix: /bin/sh -c)。适合启动本地 n2n/frp/wireguard。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"cmd": map[string]any{"type": "string", "description": "要执行的命令"},
+				},
+				"required": []string{"cmd"},
+			},
+		})
+		r.funcs["run_local"] = func(ctx context.Context, args map[string]any) string {
+			cmd := getString(args, "cmd")
+			if cmd == "" {
+				return "error: cmd is required"
+			}
+			if err := RunLocal(ctx, cmd); err != nil {
+				return "error: " + err.Error()
+			}
+			return "ok"
+		}
+
+		// run_remote: SSH into a host and execute a shell command, streaming
+		// stdout/stderr back. Aliases are looked up from memory (populated by
+		// the remember tool). Missing creds trigger a HIL prompt. This is the
+		// backbone of "deploy n2n/frp on the center host": file_copy sends the
+		// binary + config, run_remote starts the service there.
+		r.defs = append(r.defs, ToolDef{
+			Name:        "run_remote",
+			Description: "通过 SSH 在远端执行命令。alias 从记忆读取; host 可直接给 IP。适合在中心端部署 n2n/frp/wireguard。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"alias":    map[string]any{"type": "string", "description": "主机别名 (记忆里的 ssh:<alias>)"},
+					"host":     map[string]any{"type": "string", "description": "主机名或 IP (与 alias 二选一)"},
+					"user":     map[string]any{"type": "string", "description": "SSH 用户"},
+					"password": map[string]any{"type": "string", "description": "SSH 密码"},
+					"port":     map[string]any{"type": "integer", "description": "SSH 端口, 默认 22"},
+					"cmd":      map[string]any{"type": "string", "description": "在远端执行的命令"},
+				},
+				"required": []string{"cmd"},
+			},
+		})
+		r.funcs["run_remote"] = func(ctx context.Context, args map[string]any) string {
+			alias := getString(args, "alias")
+			host := getString(args, "host")
+			user := getString(args, "user")
+			password := getString(args, "password")
+			cmd := getString(args, "cmd")
+			if cmd == "" {
+				return "error: cmd is required"
+			}
+			if alias == "" && host == "" {
+				return "error: 需要 alias 或 host"
+			}
+			port := 0
+			if v, ok := args["port"].(float64); ok && v > 0 {
+				port = int(v)
+			}
+
+			mem := NewMemory(DefaultMemoryPath())
+			h, err := ResolveHost(ctx, alias, host, user, password, "", port, mem, r.ask)
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			if err := RunRemote(ctx, h, cmd); err != nil {
+				return "error: " + err.Error()
+			}
+			aliasOrHost := alias
+			if aliasOrHost == "" {
+				aliasOrHost = host
+			}
+			return fmt.Sprintf("远程命令执行完成 (%s@%s:%d)", h.User, h.Host, PortOf(h))
+		}
+
 	}
 
 func (r *Registry) configPath() string {
