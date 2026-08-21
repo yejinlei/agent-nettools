@@ -11,6 +11,7 @@ import (
 	"agent-netx/netdiag"
 	"agent-netx/proxy"
 	"agent-netx/sysproxy"
+	"agent-netx/web"
 )
 
 // ToolDef is a function-calling tool definition exposed to the LLM.
@@ -151,18 +152,33 @@ func (r *Registry) register() {
 		if err != nil {
 			return "error: " + err.Error()
 		}
-		// Round-trip validate: marshal → parse back. Catches type errors the
-		// loose map→struct conversion might silently accept.
 		b, err := config.YAMLMarshal(cfg)
 		if err != nil {
 			return "error: marshal: " + err.Error()
 		}
 		if _, err := config.LoadFromBytes(b); err != nil {
-			return "error: 生成的配置校验失败: " + err.Error()
+			return "error: 生成的配置 YAML 校验失败: " + err.Error()
+		}
+		if errs := cfg.Validate(); len(errs) > 0 {
+			lines := make([]string, len(errs))
+			for i, e := range errs {
+				lines[i] = e.Error()
+			}
+			return "error: 配置语义校验失败:\n" + strings.Join(lines, "\n")
 		}
 		path := r.configPath()
 		if p, _ := args["path"].(string); strings.TrimSpace(p) != "" {
 			path = p
+		}
+		if r.ask != nil {
+			preview := string(b)
+			if len(preview) > 400 {
+				preview = preview[:400] + "\n…(截断)"
+			}
+			ans := r.ask(ctx, "gen_config 要覆盖 " + path + "。配置预览:\n" + preview + "\n\n确认写入? (yes/no)")
+			if strings.TrimSpace(ans) != "yes" {
+				return "⏸ 用户取消写入"
+			}
 		}
 		if err := os.WriteFile(path, b, 0644); err != nil {
 			return "error: " + err.Error()
@@ -775,6 +791,42 @@ netdiag    查看进程网络端口和数据包（netstat / ss / tcpdump 等价�
 		}
 		return fmt.Sprintf("已生成: %s 和 %s", configPath, agentPath)
 	}
+
+
+		// logs_tail: tail the shared log file (~/.agent-netx/agent-netx.log).
+		r.defs = append(r.defs, ToolDef{
+			Name:        "logs_tail",
+			Description: "读取最近 N 行运行时日志。level 可选 debug/info/warn/error/all。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"n":     map[string]any{"type": "integer", "description": "行数, 默认 50"},
+					"level": map[string]any{"type": "string", "description": "级别: debug/info/warn/error/all"},
+				},
+			},
+		})
+		r.funcs["logs_tail"] = func(ctx context.Context, args map[string]any) string {
+			n := 50
+			if v, ok := args["n"].(float64); ok {
+				n = int(v)
+			}
+			if n <= 0 {
+				n = 50
+			}
+			level := getString(args, "level")
+			entries, err := web.ReadLogFile("", n, level)
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			if len(entries) == 0 {
+				return "(暂无日志)"
+			}
+			var sb strings.Builder
+			for _, e := range entries {
+				sb.WriteString(fmt.Sprintf("%s %s %s\n", e.Time, e.Level, e.Message))
+			}
+			return sb.String()
+		}
 
 	}
 

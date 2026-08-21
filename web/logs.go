@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -42,9 +43,17 @@ type LogRing struct {
 	maxSize   int
 	nextID    int
 	listeners []chan LogEntry
+	file      io.Writer
 }
 
+// NewLogRing creates a ring buffer with maxSize slots (default 1000).
 func NewLogRing(maxSize int) *LogRing {
+	return NewLogRingWithFile(maxSize, nil)
+}
+
+// NewLogRingWithFile is like NewLogRing but also dups each log entry to file.
+// A nil file writer disables the file path.
+func NewLogRingWithFile(maxSize int, file io.Writer) *LogRing {
 	if maxSize <= 0 {
 		maxSize = 1000
 	}
@@ -52,7 +61,16 @@ func NewLogRing(maxSize int) *LogRing {
 		entries:   make([]LogEntry, 0, maxSize),
 		maxSize:   maxSize,
 		listeners: make([]chan LogEntry, 0),
+		file:      file,
 	}
+}
+
+// SetFile swaps the file writer on a running LogRing. Safe to call once
+// (before first Write).
+func (r *LogRing) SetFile(file io.Writer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.file = file
 }
 
 func (r *LogRing) Write(level LogLevel, format string, args ...interface{}) {
@@ -69,7 +87,15 @@ func (r *LogRing) Write(level LogLevel, format string, args ...interface{}) {
 	r.entries = append(r.entries, entry)
 	listeners := make([]chan LogEntry, len(r.listeners))
 	copy(listeners, r.listeners)
+	file := r.file
 	r.mu.Unlock()
+
+	// Write to the shared log file under its own lock (rotatingFile is
+	// internally sync'ed), outside the ring lock so a slow disk write does
+	// not block in-ring callers.
+	if file != nil {
+		writeLogLine(file, entry)
+	}
 
 	for _, ch := range listeners {
 		select {

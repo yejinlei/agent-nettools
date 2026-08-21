@@ -162,6 +162,12 @@ func fullStart(cmd *cobra.Command) error {
 	}
 
 	logRing := web.NewLogRing(1000)
+	lf, err := web.OpenRotatingFile(web.DefaultLogPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot open log file %s: %v (logs will be in-memory only)\n", web.DefaultLogPath(), err)
+	} else {
+		logRing.SetFile(lf)
+	}
 	// One shared StatsTracker: the proxy listener feeds it traffic counts, the
 	// web dashboard reads it via /api/stats. Created once here so both
 	// subsystems share the same counts even though they run in goroutines.
@@ -442,6 +448,10 @@ func Execute() {
 	// Standalone SSH/SFTP file copy (non-TUI tool; shares memory with the agent).
 	rootCmd.AddCommand(scpCmd())
 	rootCmd.AddCommand(netdiagCmd())
+	rootCmd.AddCommand(logsCmd())
+	rootCmd.AddCommand(validateCmd())
+	rootCmd.AddCommand(stopCmd())
+	rootCmd.AddCommand(restartCmd())
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

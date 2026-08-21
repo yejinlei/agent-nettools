@@ -24,3 +24,9 @@ func killProcessTree(cmd *exec.Cmd) error {
 	c := quietRun("taskkill", "/T", "/F", "/PID", fmt.Sprintf("%d", cmd.Process.Pid))
 	return c.Run()
 }
+
+// KillPID kills the given pid and its whole process tree.
+func KillPID(pid int) error {
+	c := quietRun("taskkill", "/T", "/F", "/PID", fmt.Sprintf("%d", pid))
+	return c.Run()
+}

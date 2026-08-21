@@ -183,6 +183,10 @@ var cliSubcommands = []struct {
 	{"/forward",     false, "端口转发 (-L/-R/-D/-U/tls)"},
 	{"/scp",         true,  "SSH 文件拷贝"},
 	{"/netdiag",     true,  "网络诊断: /netdiag conns|listeners|stats|packets"},
+	{"/logs",        true,  "运行时日志: /logs [n]"},
+	{"/validate",    true,  "校验配置文件"},
+	{"/stop",        false, "停止子服务: /stop proxy|dns|...|all"},
+	{"/restart",     false, "重启子服务: /restart proxy|dns|...|all"},
 }
 
 func (t *tui) dispatchCLIShortcut(line string) bool {
@@ -280,6 +284,10 @@ func (t *tui) showAllCommands() {
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/forward"),     "端口转发 (-L/-R/-D/-U/tls)")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/scp"),         "SSH 文件拷贝")
 	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/netdiag"),     "网络诊断 (conns/listeners/stats/packets)")
+	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/logs"),        "运行时日志 (/logs [n] /logs follow)")
+	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/validate"),    "校验配置文件")
+	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/stop"),        "停止子服务 (/stop <name>|all)")
+	fmt.Printf("  %-14s  %s\n", sStatusKey.Render("/restart"),     "重启子服务 (/restart <name>|all)")
 	fmt.Println("  " + sStatusKey.Render("exit / q") + "         退出")
 	fmt.Println()
 }

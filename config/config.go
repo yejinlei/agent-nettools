@@ -1,7 +1,10 @@
 package config
 
 import (
+	"fmt"
+	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -287,6 +290,134 @@ func LoadFromBytes(data []byte) (*Config, error) {
 // YAMLMarshal marshals a value to YAML (exposed for the agent package).
 func YAMLMarshal(v any) ([]byte, error) {
 	return yaml.Marshal(v)
+}
+
+var (
+	allowedProxyTypes = map[string]bool{
+		"direct": true, "http": true, "https": true, "socks5": true,
+		"ss": true, "shadowsocks": true, "trojan": true, "vmess": true,
+		"vless": true, "forward": true, "http3": true,
+	}
+	allowedGroupTypes = map[string]bool{
+		"selector": true, "urltest": true, "url-test": true,
+		"roundrobin": true, "round-robin": true, "chain": true,
+	}
+)
+
+// Validate performs semantic validation of a loaded config. YAML-level syntax
+// is already checked by Load / LoadFromBytes. Returns one error per problem
+// (empty slice means the config is valid).
+func (cfg *Config) Validate() []error {
+	var errs []error
+
+	if cfg == nil {
+		return []error{fmt.Errorf("nil config")}
+	}
+
+	if _, ok := map[string]bool{"global": true, "rule": true, "direct": true}[cfg.Mode]; !ok {
+		errs = append(errs, fmt.Errorf("mode %q 必须是 global/rule/direct", cfg.Mode))
+	}
+
+	// Port ranges.
+	for _, p := range []struct {
+		name string
+		port int
+	}{
+		{"listen.http", cfg.Listen.HTTP},
+		{"listen.socks5", cfg.Listen.SOCKS5},
+		{"web.port", cfg.Web.Port},
+		{"mitm.http-port", cfg.MITM.HTTPPort},
+	} {
+		if p.port < 0 || p.port > 65535 {
+			errs = append(errs, fmt.Errorf("%s=%d 不在合法端口范围 (0-65535)", p.name, p.port))
+		}
+	}
+
+	// Proxy types, duplicate names.
+	seen := make(map[string]bool)
+	for i, p := range cfg.Proxies {
+		if p.Name == "" {
+			errs = append(errs, fmt.Errorf("proxies[%d] name 为空", i))
+		} else if seen[p.Name] {
+			errs = append(errs, fmt.Errorf("proxy name %q 重复", p.Name))
+		}
+		seen[p.Name] = true
+		if p.Type != "" && !allowedProxyTypes[strings.ToLower(p.Type)] {
+			errs = append(errs, fmt.Errorf("proxies[%d] type %q 未知", i, p.Type))
+		}
+		if p.Port < 0 || p.Port > 65535 {
+			errs = append(errs, fmt.Errorf("proxies[%d] port=%d 不在合法端口范围", i, p.Port))
+		}
+	}
+	proxyNames := seen
+
+	// Group types, defaults, member references.
+	seen = make(map[string]bool)
+	for i, g := range cfg.Groups {
+		if g.Name == "" {
+			errs = append(errs, fmt.Errorf("proxy-groups[%d] name 为空", i))
+		} else if seen[g.Name] {
+			errs = append(errs, fmt.Errorf("group name %q 重复", g.Name))
+		}
+		seen[g.Name] = true
+		if g.Type != "" && !allowedGroupTypes[strings.ToLower(g.Type)] {
+			errs = append(errs, fmt.Errorf("proxy-groups[%d] type %q 未知", i, g.Type))
+		}
+		if g.Default != "" && !proxyNames[g.Default] {
+			errs = append(errs, fmt.Errorf("proxy-groups[%d] default=%q 不在 proxies 中", i, g.Default))
+		}
+		for _, m := range g.Proxies {
+			if m == "DIRECT" {
+				continue
+			}
+			if !proxyNames[m] {
+				errs = append(errs, fmt.Errorf("proxy-groups[%d] proxies 包含不存在的 %q", i, m))
+			}
+		}
+	}
+
+	// Rules referencing unknown groups (warns, not errors).
+	for i, rule := range cfg.Rules {
+		parts := strings.Split(rule, ",")
+		if len(parts) >= 3 {
+			target := parts[len(parts)-1]
+			if target != "DIRECT" && target != "REJECT" && target != "PROXY" {
+				_ = i // referenced so linter is happy; we just warn below
+				if !seen[target] {
+					errs = append(errs, fmt.Errorf("rules[%d] 引用未知 group %q (规则: %s)", i, target, rule))
+				}
+			}
+		}
+	}
+
+	// CIDR parseability.
+	if cfg.TUN.CIDR != "" {
+		_, _, err := net.ParseCIDR(cfg.TUN.CIDR)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("tun.cidr %q 不是合法 CIDR: %v", cfg.TUN.CIDR, err))
+		}
+	}
+	if cfg.DNS.FakeCIDR != "" {
+		_, _, err := net.ParseCIDR(cfg.DNS.FakeCIDR)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("dns.fake-cidr %q 不是合法 CIDR: %v", cfg.DNS.FakeCIDR, err))
+		}
+	}
+
+	return errs
+}
+
+// Validate loads a config from path and validates it. Returns the error list.
+func Validate(path string) []error {
+	if path == "" {
+		cwd, _ := os.Getwd()
+		path = filepath.Join(cwd, "config.yml")
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		return []error{fmt.Errorf("读取 %s 失败: %v", path, err)}
+	}
+	return cfg.Validate()
 }
 
 const ExampleConfig = `
