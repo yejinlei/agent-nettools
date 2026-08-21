@@ -48,3 +48,4 @@ certs/
 .claude/settings.local.json
 .claude/worktrees/
 agent.yml
+_releases/

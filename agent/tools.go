@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"agent-netx/config"
+	"agent-netx/netdiag"
 	"agent-netx/proxy"
+	"agent-netx/sysproxy"
 )
 
 // ToolDef is a function-calling tool definition exposed to the LLM.
@@ -484,9 +486,297 @@ forward    SSH 风格端口转发: local(-L)/remote(-R)/dynamic(-D)/tls
 sysproxy   一键开关系统代理（Windows 注册表 / Linux gsettings）
 proxy/dns/web/tun/n2n/stunvpv  单独运行某个子服务（前台）
 scp        SSH/SFTP 上传下载单个文件
-tui        启动 LLM Agent 交互模式（就是你现在用的）`
+tui        启动 LLM Agent 交互模式（就是你现在用的）
+netdiag    查看进程网络端口和数据包（netstat / ss / tcpdump 等价）
+	`
 	}
-}
+
+	// --- network diagnostics (net_connections / net_listeners / net_packet / net_stats) ---
+	r.defs = append(r.defs, ToolDef{
+		Name:        "net_connections",
+		Description: "列出所有进程网络端口/连接,与 netstat / ss 对等。支持按协议过滤 tcp/udp。返回 Proto/Local/Remote/State/PID/Process 表。",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"proto": map[string]any{
+					"type":        "string",
+					"description": "协议过滤",
+					"enum":        []string{"all", "tcp", "udp"},
+				},
+			},
+			"required": []string{"proto"},
+		},
+	})
+	r.funcs["net_connections"] = func(ctx context.Context, args map[string]any) string {
+		proto := "all"
+		if p, ok := args["proto"].(string); ok && p != "" {
+			proto = p
+		}
+		conns, err := netdiag.GetConnections(proto)
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		if len(conns) == 0 {
+			return "(无连接)"
+		}
+		return netdiag.FormatConnections(conns)
+	}
+
+	r.defs = append(r.defs, ToolDef{
+		Name:        "net_listeners",
+		Description: "列出所有 TCP 监听端口 (LISTEN 状态),用于排查服务是否启动或端口冲突。",
+		Parameters:  objType("object"),
+	})
+	r.funcs["net_listeners"] = func(ctx context.Context, args map[string]any) string {
+		conns, err := netdiag.GetListeners()
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		if len(conns) == 0 {
+			return "(无监听端口)"
+		}
+		return netdiag.FormatConnections(conns)
+	}
+
+	r.defs = append(r.defs, ToolDef{
+		Name:        "net_stats",
+		Description: "统计当前连接总数及按状态分布 (类似 ss -s)。",
+		Parameters:  objType("object"),
+	})
+	r.funcs["net_stats"] = func(ctx context.Context, args map[string]any) string {
+		stats, err := netdiag.GetStats()
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		return netdiag.FormatStats(stats)
+	}
+
+	r.defs = append(r.defs, ToolDef{
+		Name:        "net_packet",
+		Description: "抓包(原始套接字,需要管理员/root 权限)。支持 proto/port/count/timeout 过滤。返回时间/协议/地址/长度/信息表。",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"proto": map[string]any{
+					"type":        "string",
+					"description": "协议过滤",
+					"enum":        []string{"all", "tcp", "udp"},
+				},
+				"port":    map[string]any{"type": "integer", "description": "按 src 或 dst 端口过滤"},
+				"count":   map[string]any{"type": "integer", "description": "抓包最大数量", "default": 50},
+				"timeout": map[string]any{"type": "integer", "description": "抓包超时秒数", "default": 10},
+			},
+			"required": []string{"proto", "count", "timeout"},
+		},
+	})
+	r.funcs["net_packet"] = func(ctx context.Context, args map[string]any) string {
+		proto := "all"
+		if p, ok := args["proto"].(string); ok && p != "" {
+			proto = p
+		}
+		port := toInt(args["port"])
+		count := toInt(args["count"])
+		timeout := toInt(args["timeout"])
+		if timeout <= 0 { timeout = 10 }
+		if count <= 0 { count = 50 }
+		pkts, err := netdiag.CapturePackets(netdiag.CaptureOpts{
+			Proto:   proto,
+			Port:    port,
+			Count:   count,
+			Timeout: timeout,
+		})
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		if len(pkts) == 0 {
+			return fmt.Sprintf("(在 %ds 内未捕获到匹配包,请检查过滤器或以管理员身份运行)", timeout)
+		}
+		return fmt.Sprintf("抓包 %d/%d 包:\n%s", len(pkts), timeout, netdiag.FormatPackets(pkts))
+	}
+
+	// session_list: list all persisted sessions (LLM-facing counterpart of /sessions).
+	r.defs = append(r.defs, ToolDef{
+		Name:        "session_list",
+		Description: "列出所有已保存的对话会话(按修改时间降序)。返回 id/name/updatedAt/turns/messages 数。",
+		Parameters:  objType("object"),
+	})
+	r.funcs["session_list"] = func(ctx context.Context, args map[string]any) string {
+		store := NewSessionStore("")
+		all, err := store.List()
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		if len(all) == 0 {
+			return "(暂无会话)"
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "共 %d 个会话:\n", len(all))
+		for _, s := range all {
+			id := s.ID
+			if len(id) > 24 {
+				id = id[:24] + "…"
+			}
+			name := s.Name
+			if len(name) > 30 {
+				name = name[:28] + "…"
+			}
+			msgCnt := len(s.Messages)
+			if msgCnt > 0 {
+				msgCnt--
+			}
+			fmt.Fprintf(&sb, "  %-26s  %-30s  %s  轮次 %d  消息 %d\n",
+				id, name,
+				s.UpdatedAt.Local().Format("2006-01-02 15:04"),
+				s.Turns, msgCnt)
+		}
+		return sb.String()
+	}
+
+	r.defs = append(r.defs, ToolDef{
+		Name:        "session_load",
+		Description: "按 id 或名称加载某个会话的消息内容,用于回顾或续写。",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"idOrName": map[string]any{"type": "string", "description": "session id 或名称"},
+				"limit":    map[string]any{"type": "integer", "description": "最多返回消息条数(默认20)", "default": 20},
+			},
+			"required": []string{"idOrName"},
+		},
+	})
+	r.funcs["session_load"] = func(ctx context.Context, args map[string]any) string {
+		idOrName, _ := args["idOrName"].(string)
+		if strings.TrimSpace(idOrName) == "" {
+			return "error: idOrName 必填"
+		}
+		limit := toInt(args["limit"])
+		if limit <= 0 {
+			limit = 20
+		}
+		store := NewSessionStore("")
+		s, err := store.Load(idOrName)
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		msgs := s.Messages
+		if len(msgs) > 0 && msgs[0].Role == RoleSystem {
+			msgs = msgs[1:]
+		}
+		if len(msgs) > limit {
+			msgs = msgs[len(msgs)-limit:]
+		}
+		if len(msgs) == 0 {
+			return fmt.Sprintf("会话 %s (%s): 无消息", s.Name, s.ID)
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "会话 %s (%s) — 共 %d 条, 显示最近 %d 条:\n",
+			s.Name, s.ID, len(s.Messages), len(msgs))
+		for _, m := range msgs {
+			content := strings.TrimSpace(m.Content)
+			if len(content) > 200 {
+				content = content[:200] + "…"
+			}
+			content = strings.ReplaceAll(content, "\n", " ")
+			fmt.Fprintf(&sb, "  [%s] %s\n", m.Role, content)
+		}
+		return sb.String()
+	}
+
+	r.defs = append(r.defs, ToolDef{
+		Name: "session_save",
+		Description: "把当前对话保存为一个命名会话(name)。由 TUI 自动调用或在用户明确要求'保存会话'时触发。",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "会话名称"},
+			},
+			"required": []string{"name"},
+		},
+	})
+	r.funcs["session_save"] = func(ctx context.Context, args map[string]any) string {
+		name, _ := args["name"].(string)
+		if strings.TrimSpace(name) == "" {
+			return "error: name 必填"
+		}
+		store := NewSessionStore("")
+		s, _ := store.Load(name)
+		if s == nil {
+			s = store.New(name, r.cfg.Model)
+		} else {
+			s.Name = name
+		}
+		if err := store.Save(s); err != nil {
+			return "error: " + err.Error()
+		}
+		return fmt.Sprintf("✅ 会话已保存: %s (%s)", s.Name, s.ID)
+	}
+
+
+	// sysproxy: toggle system proxy (on/off/status)
+	r.defs = append(r.defs, ToolDef{
+		Name:        "sysproxy",
+		Description: "开关系统代理。action=on|off|status；on 时可选 address (如 127.0.0.1:7890) 和 no_proxy。",
+		Parameters:  objType("object"),
+	})
+	r.funcs["sysproxy"] = func(ctx context.Context, args map[string]any) string {
+		action := getString(args, "action")
+		if action == "" {
+			return "error: 缺少 action (on/off/status)"
+		}
+		switch action {
+		case "status":
+			status, err := sysproxy.Status()
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			return status
+		case "off":
+			status, err := sysproxy.Disable()
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			return status
+		case "on":
+			addr := getString(args, "address")
+			noProxy := getString(args, "no_proxy")
+			settings := sysproxy.Settings{
+				HTTP:  addr,
+				HTTPS: addr,
+				NoProxy: noProxy,
+			}
+			status, err := sysproxy.Enable(settings)
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			return status
+		default:
+			return "error: action 必须是 on/off/status"
+		}
+	}
+
+	// init: generate example config to the current or specified directory
+	r.defs = append(r.defs, ToolDef{
+		Name:        "init",
+		Description: "生成示例配置文件 (config.yml / agent.yml)。可选 path 指定目标目录，默认当前工作目录。",
+		Parameters:  objType("object"),
+	})
+	r.funcs["init"] = func(ctx context.Context, args map[string]any) string {
+		path := getString(args, "path")
+		if path == "" {
+			path, _ = os.Getwd()
+		}
+		configPath := filepath.Join(path, "config.yml")
+		if err := os.WriteFile(configPath, []byte(config.ExampleConfig), 0644); err != nil {
+			return "error: " + err.Error()
+		}
+		agentPath := filepath.Join(path, "agent.yml")
+		if err := os.WriteFile(agentPath, []byte(config.ExampleAgentConfig), 0644); err != nil {
+			return "error: " + err.Error()
+		}
+		return fmt.Sprintf("已生成: %s 和 %s", configPath, agentPath)
+	}
+
+	}
 
 func (r *Registry) configPath() string {
 	if r.cfg.ConfigPath != "" {

@@ -18,6 +18,10 @@ type Config struct {
 	MemoryPath string `yaml:"-"`
 	Timeout int `yaml:"-"`
 	MaxRetries int `yaml:"-"`
+	// ContinueSession tells newTUI to load this existing session id/name and
+	// append to it instead of starting fresh. Set from --continue flag; empty
+	// means "start a new session". Not serialized to agent.yml (yaml:"-").
+	ContinueSession string `yaml:"-"`
 }
 
 // ConfigAgent is the standalone LLM configuration read from "agent.yml".

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "网络诊断 (netdiag)",
+    "output": "netdiag.html",
+    "quality_profile": "showcase",
+    "viewBox": [980, 320]
+  },
+  "components": [
+    {"id":"cli","type":"external","label":"CLI / Agent","sublabel":"netdiag 子命令 · 4 Agent 工具","pos":[20,130],"size":[140,60]},
+    {"id":"gopsutil","type":"backend","label":"gopsutil","sublabel":"netstat.Connections()","pos":[260,30],"size":[160,60]},
+    {"id":"rawsocket","type":"backend","label":"原始套接字","sublabel":"net.ListenPacket ip4:tcp/udp","pos":[260,210],"size":[180,60]},
+    {"id":"parser","type":"backend","label":"IP 解析器","sublabel":"IPv4 / IPv6 / ICMP 头部","pos":[560,210],"size":[150,60]},
+    {"id":"result","type":"external","label":"格式化输出","sublabel":"FormatConnections / FormatPackets","pos":[840,130],"size":[140,60]}
+  ],
+  "connections": [
+    {"id":"c1","from":"cli","to":"gopsutil","label":"conns","labelDy":-4},
+    {"id":"c2","from":"cli","to":"rawsocket","label":"capture","labelDy":4},
+    {"id":"c3","from":"rawsocket","to":"parser","label":"raw bytes"},
+    {"id":"c4","from":"gopsutil","to":"result","label":"Connection","labelDy":-8},
+    {"id":"c5","from":"parser","to":"result","label":"Packet","labelDy":8}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"连接视图","items":["net_connections (proto=all/tcp/udp)","net_listeners (仅 LISTEN 状态)","net_stats (按状态聚合, 类似 ss -s)"]},
+    {"dot":"emerald","title":"抓包视图","items":["net_packet (proto/port/count/timeout)","原始套接字 ip4:tcp + ip4:udp","IPv4/IPv6/ICMP 头部解析","管理员/root 权限必须"]},
+    {"dot":"rose","title":"Agent 可用","items":["LLM 一句话调 4 个 netdiag 工具","与 netstat / ss / tcpdump 对等","零 cgo 依赖, 可交叉编译"]}
+  ]
+}

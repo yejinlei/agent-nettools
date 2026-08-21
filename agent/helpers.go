@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"crypto/rand"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -47,4 +49,44 @@ func orQuerySuffix(query string) string {
 		return ""
 	}
 	return "，查询: " + q
+}
+
+// cmdVersion returns the build version string ("vX.Y.Z" or "dev"). The version
+// is injected at link time by cmd/Execute via the AGENT_NETX_VERSION env var.
+func cmdVersion() string {
+	v := os.Getenv("AGENT_NETX_VERSION")
+	if v == "" {
+		return "dev"
+	}
+	return v
+}
+
+// shortUUID returns 8 hex chars of a fresh random UUID, used as a display
+// label for ephemeral things like the default session id shown in the header.
+func shortUUID() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "00000000"
+	}
+	return fmt.Sprintf("%08x", b)
+}
+
+// printableLen counts the terminal display width of s, stripping ANSI escapes.
+func printableLen(s string) int {
+	inEsc := false
+	n := 0
+	for _, r := range s {
+		if r == '\033' {
+			inEsc = true
+			continue
+		}
+		if inEsc {
+			if r == 'm' {
+				inEsc = false
+			}
+			continue
+		}
+		n++
+	}
+	return n
 }

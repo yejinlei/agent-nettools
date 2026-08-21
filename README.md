@@ -1,29 +1,112 @@
-# agent-netx — 自然语言驱动的网络工具
+# agent-netx
 
-## 一句话
+<p align="center">
+<pre>
+        ⚡ agent-netx · 自然语言驱动的网络工具
+</pre>
+</p>
 
-说人话，让 AI 帮你调网络。`tui` 启动后，用中文描述需求——"把 Google 走 ss-1"、"把本机日志上传到 prod 服务器"——agent 自动把自然语言翻译成配置、规则、代理分组，直接写进 `config.yml` 并生效。
+> 说人话，让 AI 帮你调网络。`tui` 启动后，用中文描述需求——"把 Google 走 ss-1"、
+> "把本机日志上传到 prod 服务器"——agent 自动把自然语言翻译成配置、规则、代理分组，
+> 直接写进 `config.yml` 并生效。
 
-底层是一个全功能的网络工具集：6 种远程代理协议、3 种代理分组、7 种规则类型，外加 forward 端口转发、n2n P2P、STUN/TURN VPN、WireGuard、TUN 透明代理、MITM HTTPS、Web Dashboard、DNS、SCP。可以当 CLI 工具单独跑，也可以交给 agent 一句话完成。
+底层是一个全功能的网络工具集：6 种远程代理协议、3 种代理分组、7 种规则类型，
+外加 forward 端口转发、n2n P2P、STUN/TURN VPN、WireGuard、TUN 透明代理、
+MITM HTTPS、Web Dashboard、DNS、SCP、**netdiag 网络诊断**。
 
-## 架构
+可以当 CLI 工具单独跑，也可以交给 agent 一句话完成。
 
-![net-redirect 架构](docs/architecture.svg)
+---
 
-```mermaid
-flowchart LR
-    App["App<br/>系统代理 / TUN"] --> Listen["HTTP<br/>SOCKS5<br/>LISTEN"]
-    Listen --> Router["Router<br/>DOMAIN / SUFFIX<br/>CIDR / GEOIP / MATCH"]
-    Router --> Remote["远程代理<br/>HTTP / SS /<br/>Trojan / VMess"]
-    Router --> Group["代理分组<br/>selector /<br/>urltest / rr"]
-    Router --> Forward["端口转发<br/>forward"]
+## 🚀 快速开始
+
+```powershell
+# 安装（推荐）
+powershell -Command "irm https://github.com/yejinlei/agent-netx/releases/latest/download/install.ps1 | iex"
+
+# 生成示例配置
+agent-netx init
+
+# 一条命令启动（快速模式）
+agent-netx start --proxy ss://aes-256-gcm:password@server:port
+agent-netx start --proxy http://user:pass@server:port
+agent-netx start --proxy trojan://password@server:port?sni=example.com
+
+# 或完整配置模式
+agent-netx start -c config.yml
+
+# 或最推荐 —— 自然语言交互
+agent-netx tui
 ```
 
-## 功能全景
+---
+
+## 🧠 Agent 交互模式（tui）
+
+```powershell
+agent-netx tui              # 新对话
+agent-netx tui --continue   # 续写上次对话
+agent-netx tui --continue my-session   # 续写指定会话
+```
+
+启动后直接用中文描述需求：
+
+| 你说 | Agent 做的 |
+|------|-----------|
+| "把 google 走 ss-1" | 写入规则并 `switch_group` |
+| "把 google.com 加到 Auto 分组" | 调用 `add_rule` |
+| "把本机 C:\app.log 上传到 prod 服务器" | 调 `file_copy`（HIL 记一次凭据） |
+| "测一下所有代理延迟" | 调 `ping_proxies` |
+| "列出当前所有网络端口" | 调 `net_connections` |
+| "把这次对话保存到调试记录" | 调 `session_save` |
+
+Agent 走 OpenAI 兼容 API（任意兼容端点均可），配置在 `agent.yml` 中。
+
+### TUI 内置命令
+
+```
+/sessions            列出所有已保存的会话
+/session <name|id>   切换到某会话续写
+/new [name]          新建会话
+/rename <name>       重命名当前会话
+/delete <name|id>    删除某会话
+/clear               清空当前会话
+/help                查看命令帮助
+/help                查看命令帮助
+/<subcommand>     直接运行 agent-netx 子命令 (不离开 TUI)
+/help                查看命令帮助
+TUI 快捷命令 (/xxx → agent-netx xxx):
+  /init        生成示例配置     /start       启动所有启用的服务
+  /status      显示当前配置     /proxy       仅启动 HTTP/SOCKS5 代理
+  /ping        测试代理延迟     /dns         仅启动本地 DNS
+  /use         切换手动分组     /web         仅启动 Web 仪表盘
+  /sysproxy    系统代理 on/off  /tun         仅启动 TUN 设备
+  /forward     端口转发         /n2n         仅启动 n2n 节点
+  /scp         SSH 文件拷贝     /stunvpv     仅启动 STUN/TURN VPN
+  /netdiag     网络诊断         /wireguard/frp/tinc/socat/corsproxy
+/help                查看命令帮助
+```
+
+---
+
+## 📐 架构
+
+![agent-netx 架构](docs/architecture.svg)
+
+完整分层速览与交互版全景图见 [MANUAL.md §2.1](MANUAL.md) 和 [docs/panorama.html](docs/panorama.html)。
+
+## 📚 交互式架构文档
+
+访问 **[yejinlei.github.io/agent-netx/](https://yejinlei.github.io/agent-netx/)**
+浏览 16 张交互式架构图（由 Archify 渲染，支持 pan/zoom/search/focus）。
+
+---
+
+## 🧩 功能全景
 
 | 类别 | 已实现 | 规划中 |
 |------|--------|--------|
-| 远程代理 | HTTP / HTTPS / SOCKS5 ✦UDP / SS / Trojan / VMess / **VLESS+Reality ★uTLS** | WireGuard |
+| 远程代理 | HTTP / HTTPS / SOCKS5 ✦UDP / SS / Trojan / VMess / **VLESS+Reality ★uTLS** | — |
 | 代理分组 | selector / url-test / round-robin / **chain (代理链式)** | fallback / load-balance |
 | 代理模式 | direct / global / rule | — |
 | 规则类型 | DOMAIN / SUFFIX / KEYWORD / IP-CIDR / GEOIP / MATCH | REGEX / PORT-RANGE |
@@ -32,45 +115,14 @@ flowchart LR
 | 系统代理 | sysproxy on/off/status (Win 注册表 + Linux gsettings) | — |
 | 透明代理 | TUN (wintun / /dev/net/tun) + 自动桥接 n2n/stunvpv | — |
 | 隧道 | n2n P2P / STUN/TURN VPN / **WireGuard** + tunnel.Peer 接缝 | — |
+| 网络诊断 | **netdiag** — 连接 / 监听 / 抓包 / 聚合统计（netstat / ss / tcpdump 等价） | — |
+| 会话管理 | **session** — TUI 内置 + Agent 工具，持久化 + 切换 + 续写 | — |
 | 特殊能力 | forward 劫持 / MITM CA / 流量统计 | — |
 | 运维 | ping / status / use / Web Dashboard / REST API / DNS(DoH/DoT) / LLM Agent TUI / gen_config / SCP | — |
 
 ★ = uTLS 指纹伪装   ✦ = 支持 UDP (PacketProxy)
 
-完整分层速览与交互版全景图见 [MANUAL.md §2.1](MANUAL.md) 和 [docs/panorama.html](docs/panorama.html)。
-
-## 快速开始
-
-```powershell
-cd agent-netx
-
-# 生成示例配置
-go run main.go init
-
-# 快速模式：一条命令启动
-go run main.go start --proxy ss://aes-256-gcm:password@server:port
-go run main.go start --proxy http://user:pass@server:port
-go run main.go start --proxy trojan://password@server:port?sni=example.com
-
-# 完整模式：用配置文件
-go run main.go start -c config.yml
-```
-
-## 推荐用法：`tui`（Agent 交互模式）
-
-```powershell
-agent-netx tui
-```
-
-启动后直接自然语言对话：
-
-- "配置 ss://aes-256-gcm:pwd@server:port 走全局代理" → agent 生成 proxies + 设置模式
-- "把 google.com 加到 Auto 分组" → 写规则
-- "把本机 C:\app.log 上传到 prod 服务器 /tmp/" → 调 scp
-- "查看当前代理配置" / "ping 一下 api.multica.ai" → 读/执行
-- "把 google 走 ss-1" → 自动改 config.yml 并写入记忆
-
-所有命令、配置项、工具都可以自然语言驱动，不用记 YAML、不用看文档。CLI 模式用于脚本化、管道、cron 等场景。
+### 用法决策图
 
 ```mermaid
 flowchart TD
@@ -86,7 +138,9 @@ flowchart TD
     App -->|需要 hosts| A4
 ```
 
-## 命令总览
+---
+
+## ⌨️ 命令总览
 
 ```
 agent-netx [command]
@@ -107,38 +161,20 @@ agent-netx [command]
   stunvpv      仅启动 STUN/TURN VPN 节点（独立运行）
   tui          启动 LLM Agent 交互模式（自然语言驱动所有功能）
   scp          SSH 文件拷贝（记住 --alias）
+  netdiag      查看进程网络端口和数据包 (netstat / ss / tcpdump 等价)
 
 全局选项：
   -c, --config  配置文件路径
 ```
 
-每个 `proxy`/`dns`/`web`/`tun`/`n2n`/`stunvpv` 子命令都只跑一块，前台运行、`Ctrl-C` 退出——排障或按需起服务很方便。`start` 则会把所有 `enable: true` 的子服务一起拉起。
+每个 `proxy`/`dns`/`web`/`tun`/`n2n`/`stunvpv` 子命令都只跑一块，前台运行、`Ctrl-C` 退出——
+排障或按需起服务很方便。`start` 则会把所有 `enable: true` 的子服务一起拉起。
 
 详细用法见 [MANUAL.md](MANUAL.md)。
 
-### 自然语言驱动：`tui`
+---
 
-复杂命令、配置记不住？用 `tui` 启动 LLM Agent，直接用中文描述需求：
-
-```powershell
-go run main.go tui
-```
-
-```
-你> 把 google 走 ss-1
-  ⚙️ 调用工具 switch_group(group=Auto, proxy=ss-1)
-     ↳ 已把分组 Auto 切换到 ss-1
-AI> 已把 Auto 分组切换到 ss-1，google 相关流量现在走 ss-1。
-
-你> 测一下所有代理延迟
-  ⚙️ 调用工具 ping_proxies()
-     ↳ ss-1   152ms  trojan-1  208ms
-AI> ...
-```
-
-Agent 走 OpenAI 兼容 API（任意兼容端点均可，本地/自建/官方），在 `config.yml` 的 `agent:` 段配置 `base-url`、`api-key`、`model` 即可。
-
-## 配置示例
+## 📋 配置示例
 
 ```yaml
 listen:
@@ -187,9 +223,24 @@ rules:
   - MATCH,DIRECT
 ```
 
-## 深度功能挖掘
+---
 
-对比 Clash / FRP / n2n / WebRTC 等工具，还有哪些功能值得做：
+## 🛠️ netdiag 网络诊断
+
+媲美 `netstat` / `ss` / `tcpdump` 的内置网络诊断工具，CLI 与 Agent 双通道可用。
+
+```powershell
+agent-netx netdiag conns       # 所有进程连接表
+agent-netx netdiag listeners   # TCP 监听端口
+agent-netx netdiag stats       # 按状态聚合统计（类似 ss -s）
+agent-netx netdiag packets     # 原始套接字抓包（需管理员/root）
+```
+
+Agent 内可一句话调用：`"查看 8080 端口的连接"` → 自动调 `net_connections`。
+
+---
+
+## 📦 深度功能挖掘
 
 | 优先级 | 功能 | 说明 | 状态 |
 |--------|------|------|------|
@@ -202,22 +253,30 @@ rules:
 | **P2** | Web UI 仪表盘 + REST API | 可视化统计、切分组、看日志 | ✅ |
 | **P2** | DNS 代理 | 本地 DNS 解析，DoH/DoT + FakeDNS | ✅ |
 | **P2** | VLESS / Reality | uTLS 指纹伪装 + X25519 + ShortID | ✅ |
+| **P2** | 网络诊断 netdiag | 连接 / 监听 / 抓包 / 聚合，媲美 netstat / ss / tcpdump | ✅ |
+| **P2** | 会话管理 session | TUI + Agent 持久化 + 切换 + 续写 | ✅ |
 | **P3** | P2P 隧道 | n2n P2P / STUN/TURN 跨 NAT 组网 | ✅ |
 | **P3** | WebRTC / UDP 代理 | SOCKS5 UDP ASSOCIATE + forward -U | ✅ |
 | P3 | WireGuard 隧道 | tunnel.Peer 接缝已就绪，实现即插 | ✅ |
 | P3 | HTTP/3 (QUIC) | 下一代 HTTP 代理 | ✅ |
 
-## 依赖
+---
+
+## 📚 依赖
 
 | 包 | 用途 |
 |----|------|
 | github.com/spf13/cobra | CLI 框架 |
 | gopkg.in/yaml.v3 | 配置解析 |
-| `github.com/quic-go/quic-go` | HTTP/3 (QUIC) 代理 (`type: http3`) |
-| `github.com/quic-go/quic-go` | HTTP/3 (QUIC) 代理 (`type: http3`) |
+| github.com/charmbracelet/lipgloss | TUI 排版与着色 |
+| github.com/quic-go/quic-go | HTTP/3 (QUIC) 代理 (`type: http3`) |
 | golang.org/x/crypto | SS 加密 (ChaCha20-Poly1305) |
+| github.com/shirou/gopsutil/v3 | 进程网络连接查询 (netdiag) |
+| net.ListenPacket (stdlib) | 原始套接字抓包 (netdiag packets) |
 
-## 路线图
+---
+
+## 🗺️ 路线图
 
 - [x] 6 种远程代理
 - [x] 3 种分组
@@ -239,3 +298,15 @@ rules:
 - [x] WebRTC / UDP 代理 (SOCKS5 UDP ASSOCIATE + forward -U, P3)
 - [x] WireGuard 隧道
 - [x] HTTP/3 (QUIC) 代理
+- [x] 网络诊断 (netdiag: conns/listeners/packets/stats)
+- [x] 会话管理 (session: TUI 内置命令 + Agent 工具)
+
+---
+
+<p align="center">
+  <a href="https://github.com/yejinlei/agent-netx">github.com/yejinlei/agent-netx</a>
+  ·
+  <a href="https://github.com/yejinlei/agent-netx/releases">Releases</a>
+  ·
+  <a href="https://yejinlei.github.io/agent-netx/">架构文档</a>
+</p>

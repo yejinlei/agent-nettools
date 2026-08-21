@@ -329,6 +329,7 @@ func useCmd() *cobra.Command {
 
 func tuiCmd() *cobra.Command {
 	var agentConfigPath string
+	var continueSession string
 	cmd := &cobra.Command{
 		Use:   "tui",
 		Short: "Start the LLM Agent interactive mode (natural-language control)",
@@ -377,15 +378,16 @@ func tuiCmd() *cobra.Command {
 				sysPrompt = agent.DefaultSystemPrompt()
 			}
 			agentCfg := agent.Config{
-				Enable:       true,
-				BaseURL:      ca.BaseURL,
-				APIKey:       ca.APIKey,
-				Model:        ca.Model,
-				SystemPrompt: sysPrompt,
-				ConfigPath:   cfgPath,
-				MemoryPath:   ca.MemoryPath,
-				Timeout:      ca.Timeout,
-				MaxRetries:   ca.MaxRetries,
+				Enable:          true,
+				BaseURL:         ca.BaseURL,
+				APIKey:          ca.APIKey,
+				Model:           ca.Model,
+				SystemPrompt:    sysPrompt,
+				ConfigPath:      cfgPath,
+				MemoryPath:      ca.MemoryPath,
+				Timeout:         ca.Timeout,
+				MaxRetries:      ca.MaxRetries,
+				ContinueSession: continueSession,
 			}
 			if agentCfg.MemoryPath == "" {
 				agentCfg.MemoryPath = agent.DefaultMemoryPath()
@@ -408,6 +410,7 @@ func tuiCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&agentConfigPath, "agent-config", "", "path to standalone agent config (default <config-dir>/agent.yml)")
+	cmd.Flags().StringVar(&continueSession, "continue", "", "resume an existing session by name or id")
 	return cmd
 }
 
@@ -438,6 +441,7 @@ func Execute() {
 	rootCmd.AddCommand(corsproxyCmd())
 	// Standalone SSH/SFTP file copy (non-TUI tool; shares memory with the agent).
 	rootCmd.AddCommand(scpCmd())
+	rootCmd.AddCommand(netdiagCmd())
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

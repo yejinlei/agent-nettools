@@ -1,14 +1,24 @@
 # agent-netx 用户手册
 
+> 交互式架构文档 (Archify 渲染,支持 pan/zoom/search/focus):
+> **[yejinlei.github.io/agent-netx/](https://yejinlei.github.io/agent-netx/)**
+>
+> 本项目地址: **github.com/yejinlei/agent-netx** · Releases: **github.com/yejinlei/agent-netx/releases**
+
 ---
 
 ## 1. 安装
 
 ```powershell
-cd agent-netx
+# 推荐：一键安装最新版
+powershell -Command "irm https://github.com/yejinlei/agent-netx/releases/latest/download/install.ps1 | iex"
+
+# 或从源码构建
 go mod tidy
-go build -o net-redirect.exe .
+go build -ldflags "-s -w" -o agent-netx.exe .
 ```
+
+平台支持：linux-amd64 / linux-arm64 / darwin-amd64 / darwin-arm64 / windows-amd64 / windows-arm64。
 
 ---
 
@@ -772,3 +782,197 @@ agent-netx stunvpv -c config.yml
 - **tui 报 no api-key**：在 `config.yml` 的 `agent.api-key` 填 key，或 `export AGENT_API_KEY`
 - **Windows TUN 启动失败**：下载 `wintun.dll` 放到程序目录
 - **UDP 转发要经过代理**：用 `forward udp <listen> <dst> --proxy <socks5代理名>`，SOCKS5 的 UDP ASSOCIATE 才会接管
+
+---
+
+## 11. 网络诊断 (netdiag) — 媲美 netstat / ss / tcpdump
+
+`netdiag` 子命令提供四类操作：查连接 / 查监听 / 抓包 / 聚合统计。底层通过 `github.com/shirou/gopsutil/v3/net` 获取连接状态，通过 Go 标准库 `net.ListenPacket("ip4:tcp")` 原始套接字抓包——**零 cgo,可交叉编译**。
+
+### 11.1 查连接 (conns)
+
+```
+agent-netx netdiag conns              # 所有连接
+agent-netx netdiag conns --proto tcp   # 仅 TCP (类似 netstat -tn)
+agent-netx netdiag conns --proto udp   # 仅 UDP
+agent-netx netdiag conns --proto all   # 全部 (默认)
+```
+
+输出:
+
+```
+Proto    LocalAddr        RemoteAddr       State          PID  Process
+tcp      192.168.1.5:80   10.0.0.1:54321   ESTABLISHED    1234 chrome
+tcp      0.0.0.0:22       0.0.0.0:0        LISTEN         892  sshd
+udp      192.168.1.5:5353 224.0.0.251:5353  UNNAMED        1567 mdns
+```
+
+### 11.2 查监听 (listeners)
+
+```
+agent-netx netdiag listeners
+```
+
+过滤到 `State=LISTEN` 的连接,即当前进程监听的所有端口:
+
+```
+Proto    LocalAddr        RemoteAddr   State    PID  Process
+tcp      0.0.0.0:22       0.0.0.0:0    LISTEN   892  sshd
+tcp      0.0.0.0:80       0.0.0.0:0    LISTEN   456  nginx
+```
+
+### 11.3 抓包 (packets) — 类似 tcpdump
+
+```
+agent-netx netdiag packets --count 30 --timeout 15
+agent-netx netdiag packets --proto tcp --port 80
+agent-netx netdiag packets --proto udp
+```
+
+输出:
+
+```
+Captured 12 packets in 15s:
+#    Time    Proto    Src IP:Port         Dst IP:Port         Flags     Payload
+1    0.00s   TCP      192.168.1.5:54321  10.0.0.1:80         SYN       0B
+2    0.00s   TCP      10.0.0.1:80        192.168.1.5:54321  SYN,ACK   0B
+3    0.00s   TCP      192.168.1.5:54321  10.0.0.1:80         ACK       0B
+```
+
+解析能力:IPv4 / IPv6 头部、TCP 端口 + flags (SYN/ACK/FIN/RST/PSH/URG)、UDP 端口、ICMP type/code。
+
+**注意**:抓包需要打开原始套接字,**必须以管理员/root 身份运行**(Windows 提权,Linux 需 `sudo` 或 `CAP_NET_RAW`)。
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `--proto` | `all` | `tcp` / `udp` / `all` |
+| `--port` | `0` | 按端口过滤 (src 或 dst);`0` = 不过滤 |
+| `--count` | `50` | 抓满多少包即停止 |
+| `--timeout` | `10` | 抓包超时秒数,超时自动停止 |
+
+### 11.4 聚合统计 (stats) — 类似 ss -s
+
+```
+agent-netx netdiag stats
+```
+
+按 TCP/UDP/ICMP 状态聚合所有连接,输出每个状态的计数:
+
+```
+TCP:
+  ESTABLISHED    12
+  SYN_SENT       1
+  TIME_WAIT      5
+  CLOSE_WAIT     0
+  LISTEN         8
+
+UDP:  4 open sockets
+
+ICMP: 23 packets received / 12 packets sent
+```
+
+### 11.5 Agent 工具映射
+
+| CLI 子命令 | Agent 工具 | 参数 |
+|------------|-----------|------|
+| `netdiag conns` | `net_connections` | `proto: "all"\|"tcp"\|"udp"` |
+| `netdiag listeners` | `net_listeners` | — |
+| `netdiag packets` | `net_packet` | `proto` / `port` / `count` / `timeout` |
+| `netdiag stats` | `net_stats` | — |
+
+Agent 中用自然语言即可,如:"列出本机 TCP 监听端口"→ 自动调 `net_listeners`;"抓 30 个 80 端口包"→ 自动调 `net_packet(proto="tcp", port=80, count=30)`。
+
+---
+
+## 12. 会话管理 (session)
+
+TUI 的每次对话都会自动持久化到一个带 UUID 的 session 文件里，退出即保存，启动时可选择续写。
+
+### 12.1 存储
+
+- **位置**：`~/.agent-netx/sessions/session_<uuid>.json`（与 `agent-memory.json` 同级目录）
+- **schema**：
+  ```json
+  {
+    "id": "session_e03147fa-...",
+    "name": "2026-08-21 调试",
+    "createdAt": "2026-08-21T18:00:00+08:00",
+    "updatedAt": "2026-08-21T18:10:00+08:00",
+    "model": "gpt-4o-mini",
+    "turns": 12,
+    "messages": [ ... ]
+  }
+  ```
+- 每个 session 保留最近 200 条消息（含 system），超界时保留 system + 最近 199 条
+
+### 12.2 TUI 命令
+
+| 命令 | 作用 |
+|------|------|
+| `/sessions` | 列出所有已保存的会话（按修改时间降序） |
+| `/session <name\|id>` | 切换到该会话续写（当前会话先保存） |
+| `/new [name]` | 新建会话（可选命名） |
+| `/rename <name>` | 重命名当前会话 |
+| `/delete <name\|id>` | 删除某会话（不能删当前） |
+| `/clear` | 清空当前会话消息（保留 system） |
+| `/help` | 查看命令帮助 |
+
+
+### 12.2b `/xxx` CLI 快捷命令
+
+TUI 内置了 20 个 `/xxx` 快捷命令，每个都直接映射到 `agent-netx xxx` 子命令 —— 不必离开 TUI，输入 /xxx 即可触发（与 `service` Agent 工具走的是同一条 `exec.Command(exe, sub, -c <config>)` 通道），输出会以工具调用的样式内联渲染：
+
+| 快捷命令 | 作用 | 典型用法 |
+|----------|------|----------|
+| `/init` | 生成示例配置到当前目录 | `/init` |
+| `/status` | 显示当前配置 | `/status` |
+| `/ping` | 测试代理延迟 | `/ping` |
+| `/use` | 切换手动分组 | `/use Manual ss-1` |
+| `/sysproxy` | 系统代理 on/off/status | `/sysproxy on 127.0.0.1:7890` |
+| `/start` | 启动所有启用项 | `/start` |
+| `/proxy` | 仅启动代理 | `/proxy` |
+| `/dns` | 仅启动本地 DNS | `/dns` |
+| `/web` | 仅启动 Web 仪表盘 | `/web` |
+| `/tun` | 仅启动 TUN | `/tun` |
+| `/n2n` | 仅启动 n2n 节点 | `/n2n` |
+| `/stunvpv` | 仅启动 STUN/TURN VPN | `/stunvpv` |
+| `/wireguard` / `/frp` / `/tinc` / `/socat` / `/corsproxy` | 独立运行各模块 | `/wireguard -c config.yml` |
+| `/forward` | 端口转发 | `/forward -L 8080:127.0.0.1:80` |
+| `/scp` | SSH 文件拷贝 | `/scp file.tar.gz prod:~/` |
+| `/netdiag` | 网络诊断 | `/netdiag conns` |
+
+不带参数的 `/xxx` 会显示该命令的简短用法提示；所有需要配置的子命令默认附加 `-c <当前 config 路径>`，`/init` `/status` `/ping` `/use` `/scp` `/netdiag` 这几个不附加 `-c`。
+
+### 12.2c TUI 顶部 Logo
+
+启动时 header 区域会先渲染一个带 `⚡ agent-netx · 自然语言驱动的网络工具` 的 ASCII logo 框，下方是 Welcome 信息（版本、工作目录、当前会话 id/name）和 /help 提示。logo 由 `agent/tui.go` 中的 `asciiLogo` 常量渲染，宽度自适应终端（最小 60 列）。
+
+### 12.2d 缺失的 Agent 工具补齐
+
+`sysproxy` 和 `init` 工具作为 Agent 侧的对应入口也已注册，LLM 可以用自然语言触发（如“打开系统代理”→ 调 `sysproxy{action:on,address:127.0.0.1:7890}`；“生成一份示例配置”→ 调 `init{path:./}`）。
+
+### 12.3 `--continue` 启动参数
+
+```
+agent-netx tui                   # 新会话
+agent-netx tui --continue        # 无参数时续写最近一个（暂等价于新会话，后续增强）
+agent-netx tui --continue my-session   # 按名称加载
+agent-netx tui --continue session_abc12345-dead-beef...  # 按 id 加载
+```
+
+### 12.4 Agent 工具
+
+LLM 侧也可调用（用户用自然语言描述"把这次对话保存到 xxx" 或 "回顾我之前说的" 时自动触发）：
+
+| 工具 | 参数 | 说明 |
+|------|------|------|
+| `session_list` | 无 | 列出所有会话 |
+| `session_load` | `idOrName`, `limit` | 读取某会话最近 N 条消息 |
+| `session_save` | `name` | 把当前对话保存为命名会话 |
+
+### 12.5 典型场景
+
+- **多任务隔离**：`/new debug` 开一个调试对话，`/new research` 开一个调研对话，互不污染上下文
+- **断点续写**：下次开机直接 `tui --continue debug` 继续昨天的调试
+- **回顾引用**：模型用 `session_load(id=..., limit=20)` 读取历史对话作为当前上下文
+- **重命名归档**：`/rename 2026-08-21 网络问题排查` 给会话命名，方便后续查找
