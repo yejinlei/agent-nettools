@@ -72,6 +72,8 @@ func shortUUID() string {
 }
 
 // printableLen counts the terminal display width of s, stripping ANSI escapes.
+// CJK (Han / Kana / Hangul) runes render as 2 cells wide, so we count them
+// as 2 to keep │ / padding aligned on lines that contain Chinese text.
 func printableLen(s string) int {
 	inEsc := false
 	n := 0
@@ -86,7 +88,17 @@ func printableLen(s string) int {
 			}
 			continue
 		}
-		n++
+		switch {
+		case r >= 0x1100 && r <= 0x115F,   // Hangul Jamo
+			r >= 0x2E80 && r <= 0x9FFF,    // CJK Unified + CJK Extension A + Kanji parts
+			r >= 0xA000 && r <= 0xA4CF,    // Hiragana / Katakana
+			r >= 0xAC00 && r <= 0xD7A3,    // Hangul Syllables
+			r >= 0xF900 && r <= 0xFAFF,    // CJK Compatibility Ideographs
+			r >= 0xFE30 && r <= 0xFE6F:    // CJK Compatibility Forms
+			n += 2
+		default:
+			n++
+		}
 	}
 	return n
 }

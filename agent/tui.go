@@ -553,7 +553,6 @@ func (t *tui) renderHeader() {
 	}
 
 	logoLines := strings.Split(strings.TrimLeft(asciiLogo, "\n"), "\n")
-	// Center the logo lines within the header width
 	var paddedLogo []string
 	for _, ln := range logoLines {
 		padded := ln + strings.Repeat(" ", w-printableLen(ln))

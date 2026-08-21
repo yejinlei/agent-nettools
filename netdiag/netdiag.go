@@ -2,22 +2,23 @@ package netdiag
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	netstat "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
-// Connection represents a single socket connection (TCP or UDP).
+// Connection represents a single socket connection.
 type Connection struct {
-	Proto     string
-	LocalIP   string
-	LocalPort int
-	RemoteIP  string
+	Proto      string
+	LocalIP    string
+	LocalPort  int
+	RemoteIP   string
 	RemotePort int
-	State     string
-	PID       int
-	Process   string
+	State      string
+	PID        int
+	Process    string
 }
 
 // NetStats aggregates connection counts by state.
@@ -44,18 +45,40 @@ const (
 	sockDgram  = 2
 )
 
-// GetConnections returns all socket connections, optionally filtered by protocol.
-func GetConnections(proto string) ([]Connection, error) {
+// Filter holds the criteria for filtering connections.
+type Filter struct {
+	Proto string // "tcp" / "udp" / "raw" / "unix" / "all"
+	PID   int32
+	Port  int    // 0 = any; >0 match Laddr.Port OR Raddr.Port
+	State string // e.g. "ESTABLISHED", "LISTEN" (case-insensitive)
+	Src   string // e.g. "10.0.0.1" or "10.0.0.1:8080"
+	Dst   string
+}
+
+// GetConnections returns connections with optional protocol filter and post-filtering.
+func GetConnections(proto string, flt *Filter) ([]Connection, error) {
 	var raw []netstat.ConnectionStat
 	var err error
 
+	kind := "all"
 	switch strings.ToLower(proto) {
 	case "tcp":
-		raw, err = netstat.Connections("tcp")
+		kind = "tcp"
 	case "udp":
-		raw, err = netstat.Connections("udp")
-	default:
-		raw, err = netstat.Connections("all")
+		kind = "udp"
+	case "unix", "u", "local":
+		kind = "unix"
+	}
+
+	if flt != nil && flt.PID > 0 {
+		// Use ConnectionsPid for the PID-specific path — it avoids a full sweep.
+		if kind == "unix" {
+			raw, err = netstat.ConnectionsPid("unix", flt.PID)
+		} else {
+			raw, err = netstat.ConnectionsPid("all", flt.PID)
+		}
+	} else {
+		raw, err = netstat.Connections(kind)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get connections: %w", err)
@@ -64,14 +87,18 @@ func GetConnections(proto string) ([]Connection, error) {
 	cache := make(map[int32]string)
 	result := make([]Connection, 0, len(raw))
 	for _, c := range raw {
-		result = append(result, toConnection(c, cache))
+		conn := toConnection(c, cache)
+		if flt != nil && !flt.matches(conn) {
+			continue
+		}
+		result = append(result, conn)
 	}
 	return result, nil
 }
 
-// GetListeners returns TCP sockets in LISTEN state.
-func GetListeners() ([]Connection, error) {
-	all, err := GetConnections("all")
+// GetListeners returns TCP sockets in LISTEN state (with optional filter).
+func GetListeners(flt *Filter) ([]Connection, error) {
+	all, err := GetConnections("all", flt)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +113,7 @@ func GetListeners() ([]Connection, error) {
 
 // GetStats returns aggregate connection counts by state.
 func GetStats() (NetStats, error) {
-	all, err := GetConnections("all")
+	all, err := GetConnections("all", nil)
 	if err != nil {
 		return NetStats{}, err
 	}
@@ -122,6 +149,53 @@ func GetStats() (NetStats, error) {
 		}
 	}
 	return stats, nil
+}
+
+func (f *Filter) matches(c Connection) bool {
+	if f == nil {
+		return true
+	}
+	if f.Proto != "" && f.Proto != "all" {
+		lo := strings.ToLower(f.Proto)
+		if !strings.Contains(strings.ToLower(c.Proto), lo) {
+			return false
+		}
+	}
+	if f.State != "" && !strings.EqualFold(c.State, f.State) {
+		return false
+	}
+	if f.Port > 0 && c.LocalPort != f.Port && c.RemotePort != f.Port {
+		return false
+	}
+	if f.Src != "" && !ipPortMatch(c.LocalIP, c.LocalPort, f.Src) {
+		return false
+	}
+	if f.Dst != "" && !ipPortMatch(c.RemoteIP, c.RemotePort, f.Dst) {
+		return false
+	}
+	return true
+}
+
+// ipPortMatch tests whether (ip, port) matches an address like "1.2.3.4:80"
+// or just "1.2.3.4". Empty or wildcard addresses always match.
+func ipPortMatch(ip string, port int, spec string) bool {
+	if spec == "" {
+		return true
+	}
+	h, p, err := net.SplitHostPort(spec)
+	if err != nil {
+		// spec is a bare IP; only match IP
+		return ip == spec || ip == "::ffff:"+spec || spec == ip
+	}
+	if ip != h && ip != "::ffff:"+h {
+		return false
+	}
+	if p == "" {
+		return true
+	}
+	var portN int
+	fmt.Sscanf(p, "%d", &portN)
+	return port == portN
 }
 
 func toConnection(c netstat.ConnectionStat, cache map[int32]string) Connection {
@@ -170,7 +244,6 @@ func procName(pid int32) string {
 	}
 	return name
 }
-
 // FormatConnections formats a slice of connections as a readable table.
 func FormatConnections(conns []Connection) string {
 	if len(conns) == 0 {

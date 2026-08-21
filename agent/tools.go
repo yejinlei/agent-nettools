@@ -512,7 +512,7 @@ netdiag    查看进程网络端口和数据包（netstat / ss / tcpdump 等价�
 		if p, ok := args["proto"].(string); ok && p != "" {
 			proto = p
 		}
-		conns, err := netdiag.GetConnections(proto)
+		conns, err := netdiag.GetConnections(proto, nil)
 		if err != nil {
 			return "error: " + err.Error()
 		}
@@ -528,7 +528,7 @@ netdiag    查看进程网络端口和数据包（netstat / ss / tcpdump 等价�
 		Parameters:  objType("object"),
 	})
 	r.funcs["net_listeners"] = func(ctx context.Context, args map[string]any) string {
-		conns, err := netdiag.GetListeners()
+		conns, err := netdiag.GetListeners(nil)
 		if err != nil {
 			return "error: " + err.Error()
 		}
