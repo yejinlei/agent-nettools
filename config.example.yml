@@ -1,5 +1,5 @@
 
-# agent-nettools example configuration
+# agent-netx example configuration
 
 listen:
   http: 7890

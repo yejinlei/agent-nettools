@@ -1,10 +1,10 @@
-# agent-nettools — 一个轻量的网络代理客户端
+# agent-netx — 自然语言驱动的网络工具
 
 ## 一句话
 
-agent-nettools 是网络代理领域的 `/etc/hosts`：一条命令，把任意 App 的网络流量重定向到你想要的目标。
+说人话，让 AI 帮你调网络。`tui` 启动后，用中文描述需求——"把 Google 走 ss-1"、"把本机日志上传到 prod 服务器"——agent 自动把自然语言翻译成配置、规则、代理分组，直接写进 `config.yml` 并生效。
 
-支持 6 种远程代理协议、3 种代理分组、7 种规则类型，外加 forward 劫持、n2n P2P 虚拟局域网、STUN/TURN 标准协议 VPN、TUN 透明代理、MITM HTTPS 拦截、Web Dashboard，以及一个用自然语言驱动全部能力的 LLM Agent TUI。
+底层是一个全功能的网络工具集：6 种远程代理协议、3 种代理分组、7 种规则类型，外加 forward 端口转发、n2n P2P、STUN/TURN VPN、WireGuard、TUN 透明代理、MITM HTTPS、Web Dashboard、DNS、SCP。可以当 CLI 工具单独跑，也可以交给 agent 一句话完成。
 
 ## 架构
 
@@ -55,7 +55,7 @@ agent-nettools 是网络代理领域的 `/etc/hosts`：一条命令，把任意 
 ## 快速开始
 
 ```powershell
-cd agent-nettools
+cd agent-netx
 
 # 生成示例配置
 go run main.go init
@@ -69,7 +69,21 @@ go run main.go start --proxy trojan://password@server:port?sni=example.com
 go run main.go start -c config.yml
 ```
 
-## 劫持场景：App 不走代理？
+## 推荐用法：`tui`（Agent 交互模式）
+
+```powershell
+agent-netx tui
+```
+
+启动后直接自然语言对话：
+
+- "配置 ss://aes-256-gcm:pwd@server:port 走全局代理" → agent 生成 proxies + 设置模式
+- "把 google.com 加到 Auto 分组" → 写规则
+- "把本机 C:pp.log 上传到 prod 服务器 /tmp/" → 调 scp
+- "查看当前代理配置" / "ping 一下 api.multica.ai" → 读/执行
+- "把 google 走 ss-1" → 自动改 config.yml 并写入记忆
+
+所有命令、配置项、工具都可以自然语言驱动，不用记 YAML、不用看文档。CLI 模式用于脚本化、管道、cron 等场景。
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -85,7 +99,7 @@ go run main.go start -c config.yml
 ## 命令总览
 
 ```
-agent-nettools [command]
+agent-netx [command]
 
 命令：
   start        启动代理（-c 配置文件 / --proxy 快速模式）—— 一键全开所有启用项

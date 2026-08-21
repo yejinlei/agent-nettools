@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"agent-nettools/proxy"
-	"agent-nettools/router"
-	"agent-nettools/web"
+	"agent-netx/proxy"
+	"agent-netx/router"
+	"agent-netx/web"
 )
 
 type Options struct {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"agent-nettools/config"
+	"agent-netx/config"
 )
 
 // TestSpecToConfig_RoundTrip exercises the spec->Config->YAML->Config path that

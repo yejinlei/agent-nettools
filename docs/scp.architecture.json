@@ -44,7 +44,7 @@
       "id": "mem",
       "type": "database",
       "label": "Memory",
-      "sublabel": "~/.agent-nettools",
+      "sublabel": "~/.agent-netx",
       "tag": "agent.Memory",
       "pos": [
         240,
@@ -186,7 +186,7 @@
       "title": "凭证记忆",
       "items": [
         "首次连接缺信息会交互询问",
-        "记住到 ~/.agent-nettools",
+        "记住到 ~/.agent-netx",
         "之后用 --alias 复用,无需重复输入"
       ]
     },

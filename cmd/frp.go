@@ -3,7 +3,7 @@ package cmd
 import (
 	"strconv"
 
-	"agent-nettools/proxy"
+	"agent-netx/proxy"
 	"github.com/spf13/cobra"
 )
 

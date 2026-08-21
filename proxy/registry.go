@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"agent-nettools/config"
+	"agent-netx/config"
 )
 
 type Registry struct {

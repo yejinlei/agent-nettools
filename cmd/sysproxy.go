@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"agent-nettools/sysproxy"
+	"agent-netx/sysproxy"
 
 	"github.com/spf13/cobra"
 )
@@ -24,13 +24,13 @@ func sysproxyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sysproxy <on|off|status> [proxyAddr]",
 		Short: "一键开关系统代理（Windows 注册表 / Linux gsettings）",
-		Long: `一键系统代理：让本机所有应用走 agent-nettools 的代理。
+		Long: `一键系统代理：让本机所有应用走 agent-netx 的代理。
 
-  agent-nettools sysproxy on                          # 用 config.yml 里的监听端口
-  agent-nettools sysproxy on http://127.0.0.1:7890     # 指定地址
-  agent-nettools sysproxy on http://127.0.0.1:7890 --no-proxy localhost,127.0.0.1
-  agent-nettools sysproxy off                         # 关闭
-  agent-nettools sysproxy status                      # 查看当前状态
+  agent-netx sysproxy on                          # 用 config.yml 里的监听端口
+  agent-netx sysproxy on http://127.0.0.1:7890     # 指定地址
+  agent-netx sysproxy on http://127.0.0.1:7890 --no-proxy localhost,127.0.0.1
+  agent-netx sysproxy off                         # 关闭
+  agent-netx sysproxy status                      # 查看当前状态
 
 Windows: 写 HKCU\...\Internet Settings (ProxyEnable/ProxyServer) + netsh winhttp。
 Linux:   写 gsettings org.gnome.system.proxy + 生成 ~/.proxy.env 供 source。`,

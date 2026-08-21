@@ -19,7 +19,7 @@ type kv struct {
 // across turns and across sessions — most importantly SSH host configs, so it
 // does not have to ask the user for credentials every time (see HIL).
 //
-// It is backed by a JSON file (default ~/.agent-nettools/agent-memory.json,
+// It is backed by a JSON file (default ~/.agent-netx/agent-memory.json,
 // 0600). Values are opaque strings; structured records (like an SSH host) are
 // stored as JSON-encoded strings under a namespaced key (e.g. "ssh:host:foo").
 type Memory struct {
@@ -37,14 +37,14 @@ func NewMemory(path string) *Memory {
 }
 
 // DefaultMemoryPath returns the conventional memory file location:
-// ~/.agent-nettools/agent-memory.json. Falls back to a relative path if the
+// ~/.agent-netx/agent-memory.json. Falls back to a relative path if the
 // home directory can't be determined (rare).
 func DefaultMemoryPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return "agent-memory.json"
 	}
-	return filepath.Join(home, ".agent-nettools", "agent-memory.json")
+	return filepath.Join(home, ".agent-netx", "agent-memory.json")
 }
 
 func (m *Memory) load() {

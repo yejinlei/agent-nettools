@@ -1,11 +1,11 @@
-# agent-nettools 用户手册
+# agent-netx 用户手册
 
 ---
 
 ## 1. 安装
 
 ```powershell
-cd agent-nettools
+cd agent-netx
 go mod tidy
 go build -o net-redirect.exe .
 ```
@@ -16,21 +16,21 @@ go build -o net-redirect.exe .
 
 | 命令 | 作用 |
 |------|------|
-| `agent-nettools init` | 生成示例 config.yml |
-| `agent-nettools start -c config.yml` | 完整模式启动（所有启用的子服务一起跑） |
-| `agent-nettools start --proxy ss://...` | 快速模式启动 |
-| `agent-nettools status` | 显示当前配置 |
-| `agent-nettools ping` | 测试所有代理延迟 |
-| `agent-nettools use <分组> <代理>` | 切换手动分组 |
-| `agent-nettools sysproxy on/off/status` | 一键开关系统代理 |
-| `agent-nettools forward <模式> ...` | SSH 风格端口转发 (-L/-R/-D/-U/tls) |
-| `agent-nettools proxy` | 仅启动 HTTP/SOCKS5 代理（独立运行） |
-| `agent-nettools dns` | 仅启动本地 DNS 服务器（独立运行） |
-| `agent-nettools web` | 仅启动 Web 仪表盘（独立运行） |
-| `agent-nettools tun` | 仅启动 TUN 设备（独立运行） |
-| `agent-nettools n2n` | 仅启动 n2n 虚拟局域网节点（独立运行） |
-| `agent-nettools stunvpv` | 仅启动 STUN/TURN VPN 节点（独立运行） |
-| `agent-nettools tui` | 启动 LLM Agent 交互模式（自然语言驱动） |
+| `agent-netx init` | 生成示例 config.yml |
+| `agent-netx start -c config.yml` | 完整模式启动（所有启用的子服务一起跑） |
+| `agent-netx start --proxy ss://...` | 快速模式启动 |
+| `agent-netx status` | 显示当前配置 |
+| `agent-netx ping` | 测试所有代理延迟 |
+| `agent-netx use <分组> <代理>` | 切换手动分组 |
+| `agent-netx sysproxy on/off/status` | 一键开关系统代理 |
+| `agent-netx forward <模式> ...` | SSH 风格端口转发 (-L/-R/-D/-U/tls) |
+| `agent-netx proxy` | 仅启动 HTTP/SOCKS5 代理（独立运行） |
+| `agent-netx dns` | 仅启动本地 DNS 服务器（独立运行） |
+| `agent-netx web` | 仅启动 Web 仪表盘（独立运行） |
+| `agent-netx tun` | 仅启动 TUN 设备（独立运行） |
+| `agent-netx n2n` | 仅启动 n2n 虚拟局域网节点（独立运行） |
+| `agent-netx stunvpv` | 仅启动 STUN/TURN VPN 节点（独立运行） |
+| `agent-netx tui` | 启动 LLM Agent 交互模式（自然语言驱动） |
 
 ---
 
@@ -432,7 +432,7 @@ Byte 8+:  载荷数据
 `forward` 子命令提供 SSH 同款的多模式端口转发，每个模式对应 `forward` 包里的一个函数，扩展新模式只需加一个 case。
 
 ```
-agent-nettools forward <模式> [参数...] [--proxy <name>]
+agent-netx forward <模式> [参数...] [--proxy <name>]
 ```
 
 **统一选项**：`--proxy <name>` 让"目标拨号"走配置文件里的某个代理（SS / Trojan / SOCKS5 等）；不指定则直连。UDP 模式下该代理必须支持 UDP（目前仅 SOCKS5 通过 `PacketProxy` 支持）。
@@ -440,13 +440,13 @@ agent-nettools forward <模式> [参数...] [--proxy <name>]
 ### 7.7.1 本地转发 (-L)
 
 ```
-agent-nettools forward local <listen> <dst>
+agent-netx forward local <listen> <dst>
 ```
 
 本地监听 → 固定目标。等价于 `ssh -L`。
 
 ```
-agent-nettools forward local 127.0.0.1:3306 db.internal:3306 --proxy prod-ss
+agent-netx forward local 127.0.0.1:3306 db.internal:3306 --proxy prod-ss
 ```
 
 应用场景：把远程数据库端口暴露到本机；`--proxy prod-ss` 让出去的那一段经代理链式，常用于从本地访问经代理才能到达的内网服务。
@@ -454,13 +454,13 @@ agent-nettools forward local 127.0.0.1:3306 db.internal:3306 --proxy prod-ss
 ### 7.7.2 远程转发 (-R)
 
 ```
-agent-nettools forward remote <sshAlias> <remoteListen> <localDst>
+agent-netx forward remote <sshAlias> <remoteListen> <localDst>
 ```
 
 通过 SSH 隧道在远端主机上开监听，把远端的请求转回本机目标。复用 `scp` 已记住的主机 alias（`scp --alias prod ...`）。
 
 ```
-agent-nettools forward remote prod :9090 127.0.0.1:8080
+agent-netx forward remote prod :9090 127.0.0.1:8080
 ```
 
 应用场景：从公网机器回连内网开发机、暴露本地调试服务。
@@ -468,13 +468,13 @@ agent-nettools forward remote prod :9090 127.0.0.1:8080
 ### 7.7.3 动态转发 (-D)
 
 ```
-agent-nettools forward dynamic <listen>
+agent-netx forward dynamic <listen>
 ```
 
 本地 SOCKS5 监听，拨号任意目标。等价于 `ssh -D`。
 
 ```
-agent-nettools forward dynamic 1080
+agent-netx forward dynamic 1080
 ```
 
 应用场景：作为临时 SOCKS5 代理供应用使用。
@@ -482,13 +482,13 @@ agent-nettools forward dynamic 1080
 ### 7.7.4 UDP 转发 (-U)
 
 ```
-agent-nettools forward udp <listen> <dst> [--proxy <name>]
+agent-netx forward udp <listen> <dst> [--proxy <name>]
 ```
 
 本地 UDP 监听 → 固定 UDP 目标（DNS / QUIC 等）。
 
 ```
-agent-nettools forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
+agent-netx forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
 ```
 
 `--proxy` 指定 SOCKS5 代理 → 走该代理的 UDP ASSOCIATE 出去；不指定则本机直连 UDP。应用场景：把本机 DNS 经代理出去；走 QUIC 的服务做 UDP 隧道。
@@ -496,13 +496,13 @@ agent-nettools forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
 ### 7.7.5 TLS 终止 (tls)
 
 ```
-agent-nettools forward tls <listen> <dst> [sni]
+agent-netx forward tls <listen> <dst> [sni]
 ```
 
 HTTPS 监听 → 明文 HTTP 后端（MITM / 流量观察）。
 
 ```
-agent-nettools forward tls 0.0.0.0:443 127.0.0.1:80
+agent-netx forward tls 0.0.0.0:443 127.0.0.1:80
 ```
 
 配合 `mitm` 段的自签 CA 可拦截并记录 App 明文流量（详见 4.1 场景）。
@@ -512,9 +512,9 @@ agent-nettools forward tls 0.0.0.0:443 127.0.0.1:80
 ## 7.8 系统代理一键开关 (sysproxy)
 
 ```
-agent-nettools sysproxy on          [http://127.0.0.1:7890] [--no-proxy host,host]
-agent-nettools sysproxy off
-agent-nettools sysproxy status
+agent-netx sysproxy on          [http://127.0.0.1:7890] [--no-proxy host,host]
+agent-netx sysproxy off
+agent-netx sysproxy status
 ```
 
 | 平台 | 实际写入 |
@@ -524,7 +524,7 @@ agent-nettools sysproxy status
 
 `on` 不带地址时默认取 `config.yml` 的 HTTP 监听端口。`--no-proxy` 指定代理排除主机（如 `localhost,127.0.0.1`）。
 
-应用场景：一键让本机所有 App 走 agent-nettools 的代理（浏览器也走）；配合 `forward dynamic` 或 `start` 使用。
+应用场景：一键让本机所有 App 走 agent-netx 的代理（浏览器也走）；配合 `forward dynamic` 或 `start` 使用。
 
 ---
 
@@ -658,7 +658,7 @@ rules:
 
 ```powershell
 go run main.go tui
-# 或编译后：agent-nettools tui
+# 或编译后：agent-netx tui
 ```
 
 ### 8.2 配置
@@ -730,7 +730,7 @@ Agent 最多自动调用 8 轮工具；`exit`/`quit`/`q` 或 Ctrl-D 退出。
      ↳ dns 已停止 (pid=12345)
 ```
 
-每个子服务都是独立进程（与独立子命令 `agent-nettools dns` 等同源），互不影响；`start` 模式下重复启动会提示已在运行。
+每个子服务都是独立进程（与独立子命令 `agent-netx dns` 等同源），互不影响；`start` 模式下重复启动会提示已在运行。
 
 ---
 
@@ -740,27 +740,27 @@ Agent 最多自动调用 8 轮工具；`exit`/`quit`/`q` 或 Ctrl-D 退出。
 
 ```powershell
 # 仅代理监听
-agent-nettools proxy -c config.yml
+agent-netx proxy -c config.yml
 
 # 仅 DNS
-agent-nettools dns -c config.yml
+agent-netx dns -c config.yml
 
 # 仅 Web 仪表盘
-agent-nettools web -c config.yml
+agent-netx web -c config.yml
 
 # 仅 TUN 设备（需管理员权限）
-agent-nettools tun -c config.yml
+agent-netx tun -c config.yml
 
 # 仅 n2n 节点
-agent-nettools n2n -c config.yml
+agent-netx n2n -c config.yml
 
 # 仅 STUN/TURN VPN 节点
-agent-nettools stunvpv -c config.yml
+agent-netx stunvpv -c config.yml
 ```
 
 每个命令都从同一个 `config.yml` 读取自己那段的配置（端口/地址/模式），在前台运行，`Ctrl-C` 优雅退出。
 
-如果只想一键全开，用 `agent-nettools start -c config.yml` 即可——它会把所有 `enable: true` 的子服务一起拉起。
+如果只想一键全开，用 `agent-netx start -c config.yml` 即可——它会把所有 `enable: true` 的子服务一起拉起。
 
 ---
 

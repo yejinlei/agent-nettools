@@ -4,7 +4,7 @@ import (
 	"net"
 	"strings"
 
-	"agent-nettools/proxy"
+	"agent-netx/proxy"
 )
 
 type Router struct {

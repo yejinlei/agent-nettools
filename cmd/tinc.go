@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"agent-nettools/tinc"
+	"agent-netx/tinc"
 	"github.com/spf13/cobra"
 )
 

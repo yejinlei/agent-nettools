@@ -9,79 +9,30 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 )
 
 const (
-	SaveCursor    = "\033[7m"
+	ClearLn        = "\033[2K"
+	ShowCursor     = "\033[?25h"
+	HideCursor     = "\033[?25l"
+	SaveCursor     = "\033[7m"
 	RestoreCursor = "\033[8m"
-	ClearLn       = "\033[2K"
-	ShowCursor    = "\033[?25h"
-	HideCursor    = "\033[?25l"
 )
 
 var (
-	termHeight = 24
 	termWidth  = 80
+	termHeight = 24
 
-	sHeaderBar  lipgloss.Style
-	sTitle      lipgloss.Style
-	sSubtitle   lipgloss.Style
-	sStatusBar  lipgloss.Style
-	sStatusKey  lipgloss.Style
-	sStatusVal  lipgloss.Style
-	sUserRail   lipgloss.Style
-	sUserText   lipgloss.Style
-	sAiRail     lipgloss.Style
-	sAiText     lipgloss.Style
-	sToolIcon   lipgloss.Style
-	sToolName   lipgloss.Style
-	sToolArgs   lipgloss.Style
-	sToolResult lipgloss.Style
-	sPrompt     lipgloss.Style
-	sThinking   lipgloss.Style
-	sError      lipgloss.Style
+	cCyan   = "\033[36m"
+	cGreen  = "\033[32m"
+	cYellow = "\033[33m"
+	cRed    = "\033[31m"
+	cDim    = "\033[2m"
+	cWhite  = "\033[37m"
+	cReset  = "\033[0m"
+	cBold   = "\033[1m"
 )
-
-func init() {
-	initStyles()
-	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
-		termHeight = h
-		termWidth = w
-	}
-}
-
-func initStyles() {
-	cy := lipgloss.Color("39")
-	gr := lipgloss.Color("46")
-	ye := lipgloss.Color("226")
-	mg := lipgloss.Color("213")
-	rd := lipgloss.Color("196")
-	wh := lipgloss.Color("252")
-	dm := lipgloss.Color("245")
-
-	sHeaderBar = lipgloss.NewStyle().Foreground(cy).Bold(true)
-	sTitle = lipgloss.NewStyle().Foreground(ye).Bold(true)
-	sSubtitle = lipgloss.NewStyle().Foreground(dm)
-	sStatusBar = lipgloss.NewStyle().
-		Foreground(dm).
-		Background(cy).
-		Padding(0, 1)
-	sStatusKey = lipgloss.NewStyle().Foreground(cy).Bold(true)
-	sStatusVal = lipgloss.NewStyle().Foreground(wh)
-	sUserRail = lipgloss.NewStyle().Foreground(gr).Bold(true).Width(4)
-	sAiRail = lipgloss.NewStyle().Foreground(cy).Bold(true).Width(4)
-	sUserText = lipgloss.NewStyle().Foreground(wh)
-	sAiText = lipgloss.NewStyle().Foreground(wh)
-	sToolIcon = lipgloss.NewStyle().Foreground(ye).Bold(true)
-	sToolName = lipgloss.NewStyle().Foreground(cy).Bold(true)
-	sToolArgs = lipgloss.NewStyle().Foreground(dm)
-	sToolResult = lipgloss.NewStyle().Foreground(dm)
-	sPrompt = lipgloss.NewStyle().Foreground(gr).Bold(true)
-	sThinking = lipgloss.NewStyle().Foreground(mg)
-	sError = lipgloss.NewStyle().Foreground(rd)
-}
 
 type tui struct {
 	cfg      Config
@@ -89,16 +40,17 @@ type tui struct {
 	registry *Registry
 	llm      *LLM
 	msgs     []Message
+
 	history  []string
 	histIdx  int
 	turns    int
 	tools    int
+	context  int
 }
 
 func newTUI(cfg Config) *tui {
 	mem := NewMemory(cfg.MemoryPath)
-	ask := promptOrSilent()
-	registry := NewRegistry(cfg, mem, ask)
+	registry := NewRegistry(cfg, mem, promptOrSilent())
 	llm := NewLLM(cfg, registry.Defs())
 	systemMsg := cfg.SystemPrompt
 	if systemMsg == "" {
@@ -118,17 +70,17 @@ func newTUI(cfg Config) *tui {
 }
 
 func (t *tui) run(ctx context.Context) error {
-	t.renderHeader()
+	t.renderInfoBox()
+	t.renderSuggestion()
 
 	rawMode := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	if rawMode {
-		oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-		if err != nil {
-			rawMode = false
-		} else {
-			defer func() { term.Restore(int(os.Stdin.Fd()), oldState) }()
+		if st, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
+			defer func() { term.Restore(int(os.Stdin.Fd()), st) }()
 			fmt.Print(HideCursor)
 			defer fmt.Print(ShowCursor)
+		} else {
+			rawMode = false
 		}
 	}
 
@@ -141,7 +93,6 @@ func (t *tui) run(ctx context.Context) error {
 
 		line, err := t.readLine(rawMode)
 		if err == io.EOF {
-			t.renderGoodbye()
 			return nil
 		}
 		if err != nil {
@@ -152,32 +103,31 @@ func (t *tui) run(ctx context.Context) error {
 			continue
 		}
 		if line == "exit" || line == "quit" || line == "q" {
-			t.renderGoodbye()
 			return nil
 		}
 
 		t.history = append(t.history, line)
 		t.histIdx = len(t.history)
 		t.turns++
-		t.msgs = append(t.msgs, Message{Role: RoleUser, Content: line})
 		t.renderUserLine(line)
+		t.msgs = append(t.msgs, Message{Role: RoleUser, Content: line})
+		t.updateContext()
 
 		assistant, err := t.thinkLoop(ctx, rawMode)
 		if err != nil {
-			fmt.Println(t.renderError("⚠ " + err.Error()))
+			fmt.Printf("  %s⚠ %s%s\n", cRed, err.Error(), cReset)
 			t.msgs = t.msgs[:len(t.msgs)-1]
 			t.renderPrompt("")
-			t.renderStatusBar()
 			continue
 		}
 		t.msgs = append(t.msgs, assistant)
+		t.updateContext()
 
 		if len(assistant.ToolCalls) == 0 {
 			if assistant.Content != "" {
 				t.renderAILine(assistant.Content)
 			}
 			t.renderPrompt("")
-			t.renderStatusBar()
 			continue
 		}
 
@@ -185,7 +135,11 @@ func (t *tui) run(ctx context.Context) error {
 			t.tools++
 			args := ParseToolCallArgs(tc.Function.Arguments)
 			argsStr := compactArgs(args)
-			fmt.Println("  " + t.renderToolCall(tc.Function.Name, argsStr))
+			fmt.Printf("  %s⚙ %s%s", cYellow, cCyan, tc.Function.Name)
+			if argsStr != "" {
+				fmt.Printf("%s(%s)%s", cDim, argsStr, cReset)
+			}
+			fmt.Println(cReset)
 			result := t.registry.Call(ctx, tc.Function.Name, args)
 			if result != "" {
 				t.renderToolResult(result)
@@ -197,64 +151,48 @@ func (t *tui) run(ctx context.Context) error {
 			})
 		}
 	}
-	panic("unreachable")
 }
 
-func (t *tui) renderHeader() {
-	w := termWidth - 2
-	if w < 40 {
-		w = 40
-	}
-	bar := strings.Repeat("▬", w)
-	fmt.Println()
-	fmt.Println(sHeaderBar.Render(bar))
-	fmt.Println(sTitle.Render("  agent-nettools") + " " + sSubtitle.Render("自然语言驱动 · 自动调用工具完成你的网络操作"))
-	fmt.Println(sHeaderBar.Render(bar))
-	fmt.Println()
-}
-
-func (t *tui) renderStatusBar() {
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
-		return
-	}
-	parts := []string{
-		sStatusKey.Render("model") + ":" + sStatusVal.Render(t.cfg.Model),
-		sStatusKey.Render("base") + ":" + sStatusVal.Render(shortBaseURL(t.cfg.BaseURL)),
-	}
-	if t.mem.HasSSHHosts() {
-		hosts := strings.Join(t.mem.sshAliases(), ",")
-		if len(hosts) > 30 {
-			hosts = hosts[:28] + "…"
+func (t *tui) updateContext() {
+	t.context = 0
+	for _, m := range t.msgs {
+		t.context += len(m.Content)
+		for _, tc := range m.ToolCalls {
+			t.context += len(tc.Function.Arguments)
 		}
-		parts = append(parts, sStatusKey.Render("ssh") + ":" + sStatusVal.Render(hosts))
 	}
-	statusText := strings.Join(parts, "   ·   ")
-	bar := sStatusBar.Render(" " + statusText + " ")
-	for lipgloss.Width(bar) < termWidth {
-		bar += " "
+}
+
+func (t *tui) renderInfoBox() {
+	fmt.Println()
+	t.box("  " + cCyan + "Version:" + cReset + "   " + fmt.Sprintf("%-40s", cmdVersion()))
+	fmt.Println()
+}
+
+func cmdVersion() string {
+	v, ok := os.LookupEnv("AGENT_NETX_VERSION")
+	if ok && v != "" {
+		return v
 	}
-	fmt.Printf("\033[%d;1H", termHeight)
-	fmt.Printf("\033[1A")
-	fmt.Print(bar + "\n")
+	return "(dev)"
+}
+
+func (t *tui) renderSuggestion() {
+	fmt.Println(cYellow + " ✦ Try Kimi Code Web UI" + cReset)
+	fmt.Println(cDim + "    Clearer task progress, visual sessions & settings management." + cReset)
+	fmt.Println(cDim + "    Run /help to see available commands." + cReset)
+	fmt.Println()
 }
 
 func (t *tui) renderUserLine(line string) {
-	fmt.Println()
-	fmt.Println(sUserRail.Render("你  ") + sUserText.Render(line))
+	fmt.Printf("\n  %s✨ %s%s%s\n", cYellow, cReset, cWhite, line)
 }
 
 func (t *tui) renderAILine(content string) {
 	for _, l := range wrapLines(content, termWidth-12) {
-		fmt.Println(sAiRail.Render("AI  ") + sAiText.Render(l))
+		fmt.Printf("  %s● %s%s\n", cCyan, cWhite, l)
 	}
 	fmt.Println()
-}
-
-func (t *tui) renderToolCall(name, args string) string {
-	if args == "" {
-		return sToolIcon.Render("⚙ ") + sToolName.Render(name)
-	}
-	return sToolIcon.Render("⚙ ") + sToolName.Render(name) + sToolArgs.Render("("+args+")")
 }
 
 func (t *tui) renderToolResult(result string) {
@@ -263,171 +201,206 @@ func (t *tui) renderToolResult(result string) {
 		preview = preview[:400] + "\n…(截断)"
 	}
 	for i, l := range strings.Split(preview, "\n") {
-		prefix := "     └─"
+		prefix := "      └─"
 		if i > 0 {
-			prefix = "     │ "
+			prefix = "      │ "
 		}
-		fmt.Println(sToolResult.Render(prefix + " " + l))
+		fmt.Printf("  %s%s %s\n", cDim, prefix, l)
 	}
-}
-
-func (t *tui) renderError(s string) string {
-	return "  AI " + sError.Render(s)
 }
 
 func (t *tui) renderPrompt(line string) {
-	fmt.Print(sPrompt.Render("你 > ") + line)
+	w := termWidth
+	bar := strings.Repeat("─", w-2)
+	top := "╭" + bar + "╮"
+	prompt := "│ > " + line
+	pad := w - 2 - printableLen(prompt)
+	if pad < 0 {
+		pad = 0
+	}
+	prompt += strings.Repeat(" ", pad) + "│"
+	bot := "╰" + bar + "╯"
+	status := t.statusLine(w)
+	pad2 := w - printableLen(status)
+	if pad2 < 0 {
+		pad2 = 0
+	}
+	status += strings.Repeat(" ", pad2)
+
+	fmt.Println()
+	fmt.Println(top)
+	fmt.Print(prompt)
+	fmt.Println()
+	fmt.Println(bot)
+	fmt.Print(status)
 }
 
-func (t *tui) renderGoodbye() {
-	fmt.Println()
-	fmt.Println(sSubtitle.Render("  ── 再见 👋  ") +
-		sStatusVal.Render(fmt.Sprintf("%d 轮对话 · %d 次工具调用", t.turns, t.tools)) +
-		sSubtitle.Render(" ──"))
+func (t *tui) statusLine(w int) string {
+	hosts := ""
+	if t.mem.HasSSHHosts() {
+		hosts = " · SSH: " + strings.Join(t.mem.sshAliases(), ",")
+		if len(hosts) > 40 {
+			hosts = hosts[:38] + "…"
+		}
+	}
+	left := fmt.Sprintf("%s%s%s  %s%s%s%s  %s%s%s",
+		cCyan, cBold, shortBaseURL(t.cfg.BaseURL),
+		cReset, cBold, "v"+cmdVersion(), cReset,
+		cDim, "context: "+fmt.Sprintf("%d%%", pct(t.context)), cReset)
+	left += hosts
+	return left
+}
+
+func pct(ctx int) int {
+	if ctx == 0 {
+		return 0
+	}
+	p := ctx * 100 / 131072
+	if p > 100 {
+		return 100
+	}
+	return p
+}
+
+func (t *tui) box(s string) {
+	w := termWidth
+	if w < 40 {
+		w = 40
+	}
+	bar := strings.Repeat("─", w-2)
+	fmt.Println("╭" + bar + "╮")
+	fmt.Print("│ " + s)
+	pad := w - 2 - printableLen(s)
+	if pad < 0 {
+		pad = 0
+	}
+	fmt.Println(strings.Repeat(" ", pad) + "│")
+	fmt.Println("╰" + bar + "╯")
 }
 
 func (t *tui) readLine(rawMode bool) (string, error) {
-	t.renderPrompt("")
 	if !rawMode {
-		var buf strings.Builder
-		tmp := make([]byte, 4096)
-		for {
-			n, err := os.Stdin.Read(tmp)
-			if n > 0 {
-				buf.WriteString(string(tmp[:n]))
-			}
-			if err != nil {
-				break
-			}
-			if strings.Contains(buf.String(), "\n") {
-				break
-			}
-		}
-		s := buf.String()
-		line, _, _ := strings.Cut(s, "\n")
-		if line != "" || s == "" {
-			return strings.TrimRight(line, "\r\n"), nil
-		}
-		return "", io.EOF
+		return t.readLineBuffered()
 	}
+	t.renderPrompt("")
 
 	var buf []byte
 loop:
-		for {
-			runeBytes, err := readUtf8Rune(os.Stdin)
-			if err != nil {
-				return "", err
+	for {
+		rb, err := readUtf8Rune(os.Stdin)
+		if err != nil {
+			return "", err
+		}
+		switch rb[0] {
+		case 13:
+			break loop
+		case 10:
+			continue
+		case 4:
+			return "", io.EOF
+		case 3:
+			return "", fmt.Errorf("cancelled")
+		case 127, 8:
+			if len(buf) > 0 {
+				_, sz := utf8.DecodeLastRune(buf)
+				buf = buf[:len(buf)-sz]
+				t.redrawPrompt(buf)
 			}
-
-			switch runeBytes[0] {
-			case 13:
-				break loop
-			case 10:
+		case 27:
+			inner := make([]byte, 3)
+			n2, _ := os.Stdin.Read(inner)
+			if n2 == 0 || inner[0] != '[' {
 				continue
-			case 4:
-				return "", io.EOF
-			case 3:
-				return "", fmt.Errorf("cancelled")
-			case 127, 8:
+			}
+			key := inner[1]
+			if n2 >= 3 && key == 'O' {
+				key = inner[2]
+			}
+			switch key {
+			case 'A':
+				if len(t.history) > 0 && t.histIdx > 0 {
+					t.histIdx--
+					buf = []byte(t.history[t.histIdx])
+					t.redrawPrompt(buf)
+				}
+			case 'B':
+				if t.histIdx < len(t.history)-1 {
+					t.histIdx++
+					buf = []byte(t.history[t.histIdx])
+					t.redrawPrompt(buf)
+				}
+			case 'D':
+				if len(buf) == 0 {
+					return "", io.EOF
+				}
+				_, sz := utf8.DecodeLastRune(buf)
+				buf = buf[:len(buf)-sz]
+				t.redrawPrompt(buf)
+			case 'H':
 				if len(buf) > 0 {
 					_, sz := utf8.DecodeLastRune(buf)
 					buf = buf[:len(buf)-sz]
-					fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
-				}
-			case 27:
-				inner := make([]byte, 3)
-				n2, _ := os.Stdin.Read(inner)
-				if n2 == 0 || inner[0] != '[' {
-					continue
-				}
-				key := inner[1]
-				if n2 >= 3 && key == 'O' {
-					key = inner[2]
-				}
-				switch key {
-				case 'A':
-					if len(t.history) > 0 && t.histIdx > 0 {
-						t.histIdx--
-						buf = []byte(t.history[t.histIdx])
-						fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
-					}
-				case 'B':
-					if t.histIdx < len(t.history)-1 {
-						t.histIdx++
-						buf = []byte(t.history[t.histIdx])
-						fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
-					}
-				case 'D':
-					if len(buf) == 0 {
-						return "", io.EOF
-					}
-					_, sz := utf8.DecodeLastRune(buf)
-					buf = buf[:len(buf)-sz]
-					fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
-				case 'H':
-					if len(buf) > 0 {
-						_, sz := utf8.DecodeLastRune(buf)
-						buf = buf[:len(buf)-sz]
-						fmt.Printf("%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf)+" ")
-					}
-				}
-			default:
-				if runeBytes[0] >= 32 {
-					buf = append(buf, runeBytes...)
-					fmt.Print(string(runeBytes))
+					t.redrawPrompt(buf)
 				}
 			}
+		default:
+			if rb[0] >= 32 {
+				buf = append(buf, rb...)
+				t.redrawPrompt(buf)
+			}
 		}
-		fmt.Println()
-		return string(buf), nil
 	}
-
-// readUtf8Rune reads a single UTF-8 rune (1–4 bytes) from r.
-func readUtf8Rune(r io.Reader) ([]byte, error) {
-	first := make([]byte, 1)
-	if _, err := r.Read(first); err != nil {
-		return nil, err
-	}
-	b := first[0]
-	switch {
-	case b < 0x80:
-		return first, nil
-	case b < 0xE0:
-		return readUtf8Tail(r, first, 1)
-	case b < 0xF0:
-		return readUtf8Tail(r, first, 2)
-	default:
-		return readUtf8Tail(r, first, 3)
-	}
+	fmt.Println()
+	return string(buf), nil
 }
 
-func readUtf8Tail(r io.Reader, prefix []byte, n int) ([]byte, error) {
-	tail := make([]byte, n)
-	if _, err := r.Read(tail); err != nil {
-		return prefix, err
+func (t *tui) redrawPrompt(buf []byte) {
+	fmt.Printf("\033[%dA", 4)
+	t.renderPrompt(string(buf))
+}
+
+func (t *tui) readLineBuffered() (string, error) {
+	var buf strings.Builder
+	tmp := make([]byte, 4096)
+	for {
+		n, err := os.Stdin.Read(tmp)
+		if n > 0 {
+			buf.WriteString(string(tmp[:n]))
+		}
+		if err != nil {
+			break
+		}
+		if strings.Contains(buf.String(), "\n") {
+			break
+		}
 	}
-	return append(prefix, tail...), nil
+	s := buf.String()
+	line, _, _ := strings.Cut(s, "\n")
+	if line != "" || s == "" {
+		return strings.TrimRight(line, "\r\n"), nil
+	}
+	return "", io.EOF
 }
 
 func (t *tui) thinkLoop(ctx context.Context, rawMode bool) (Message, error) {
 	if !rawMode {
-		fmt.Print(sThinking.Render("  AI 思考中 ..."))
+		fmt.Print(cDim + "  思考中 ...")
 		msg, err := t.llm.Complete(ctx, t.msgs)
 		fmt.Printf("\r%s\r", ClearLn)
 		return msg, err
 	}
 
 	done := make(chan struct{})
-	frames := []string{"⠋", "⠕", "⠙", "⠘", "⠼", "⠴", "⠆", "⠇", "⠇", "⠏"}
+	frames := []string{"⠋", "⠕", "⠙", "⠘", "⠼", "⠴", "⠆", "⠇"}
 	go func() {
 		ticker := time.NewTicker(90 * time.Millisecond)
 		defer ticker.Stop()
-		fmt.Print(SaveCursor + sThinking.Render("  AI 思考中 "))
+		fmt.Print(SaveCursor + cDim + "  思考中 ")
 		i := 0
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Print(sThinking.Render(frames[i%len(frames)]))
+				fmt.Print(frames[i%len(frames)])
 				i++
 			case <-done:
 				return
@@ -437,7 +410,7 @@ func (t *tui) thinkLoop(ctx context.Context, rawMode bool) (Message, error) {
 
 	msg, err := t.llm.Complete(ctx, t.msgs)
 	close(done)
-	fmt.Printf("\033[8m\r%s\r", ClearLn)
+	fmt.Printf(RestoreCursor + "\r%s\r", ClearLn)
 	return msg, err
 }
 
@@ -465,9 +438,9 @@ func wrapLines(s string, limit int) []string {
 	for _, line := range strings.Split(s, "\n") {
 		for len(line) > limit {
 			chop := limit
-			idx := strings.LastIndex(line[:limit], " ")
-			if idx >= limit/2 {
-				chop = idx
+			index := strings.LastIndex(line[:limit], " ")
+			if index >= limit/2 {
+				chop = index
 			}
 			out = append(out, line[:chop])
 			line = line[chop:]
@@ -489,7 +462,8 @@ func compactArgs(args map[string]any) string {
 	var sb strings.Builder
 	first := true
 	for k, v := range args {
-		if !first {
+		if first {
+		} else {
 			sb.WriteString(", ")
 		}
 		first = false
@@ -498,4 +472,49 @@ func compactArgs(args map[string]any) string {
 		fmt.Fprintf(&sb, "%v", v)
 	}
 	return sb.String()
+}
+
+func readUtf8Rune(r io.Reader) ([]byte, error) {
+	first := make([]byte, 1)
+	if _, err := r.Read(first); err != nil {
+		return nil, err
+	}
+	b := first[0]
+	switch {
+	case b < 0x80:
+		return first, nil
+	case b < 0xE0:
+		return readUtf8Tail(r, first, 1)
+	case b < 0xF0:
+		return readUtf8Tail(r, first, 2)
+	default:
+		return readUtf8Tail(r, first, 3)
+	}
+}
+
+func readUtf8Tail(r io.Reader, prefix []byte, n int) ([]byte, error) {
+	tail := make([]byte, n)
+	if _, err := r.Read(tail); err != nil {
+		return prefix, err
+	}
+	return append(prefix, tail...), nil
+}
+
+func printableLen(s string) int {
+	inEsc := false
+	n := 0
+	for _, r := range s {
+		if r == '\033' {
+			inEsc = true
+			continue
+		}
+		if inEsc {
+			if r == 'm' {
+				inEsc = false
+			}
+			continue
+		}
+		n++
+	}
+	return n
 }

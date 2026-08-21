@@ -3,9 +3,9 @@ package cmd
 import (
 	"context"
 
-	"agent-nettools/config"
-	"agent-nettools/web"
-	"agent-nettools/wireguard"
+	"agent-netx/config"
+	"agent-netx/web"
+	"agent-netx/wireguard"
 
 	"github.com/spf13/cobra"
 )
@@ -19,8 +19,8 @@ func wireguardCmd() *cobra.Command {
 		Use:   "wireguard",
 		Short: "仅启动 WireGuard P2P 节点（独立运行）",
 		Long: `WireGuard P2P 节点，实现 tunnel.Peer 接缝。
-用法: agent-nettools wireguard
-      agent-nettools wireguard --no-tun   # 仅测试 UDP 通道，不接 TUN`,
+用法: agent-netx wireguard
+      agent-netx wireguard --no-tun   # 仅测试 UDP 通道，不接 TUN`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			noTun, _ := cmd.Flags().GetBool("no-tun")
 			return standaloneRun(cmd, func(ctx context.Context, cfg *config.Config, logRing *web.LogRing) error {

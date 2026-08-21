@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"net"
 
-	"agent-nettools/config"
-	"agent-nettools/dns"
-	"agent-nettools/listener"
-	"agent-nettools/mitm"
-	"agent-nettools/n2n"
-	"agent-nettools/proxy"
-	"agent-nettools/router"
-	"agent-nettools/stunvpv"
-	"agent-nettools/tun"
-	"agent-nettools/web"
+	"agent-netx/config"
+	"agent-netx/dns"
+	"agent-netx/listener"
+	"agent-netx/mitm"
+	"agent-netx/n2n"
+	"agent-netx/proxy"
+	"agent-netx/router"
+	"agent-netx/stunvpv"
+	"agent-netx/tun"
+	"agent-netx/web"
 )
 
 // This file holds the per-subsystem runners shared by `start` (full mode) and

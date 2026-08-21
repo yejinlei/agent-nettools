@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"agent-nettools/agent"
-	"agent-nettools/config"
-	"agent-nettools/forward"
-	"agent-nettools/proxy"
+	"agent-netx/agent"
+	"agent-netx/config"
+	"agent-netx/forward"
+	"agent-netx/proxy"
 
 	"github.com/spf13/cobra"
 )
@@ -48,11 +48,11 @@ func forwardCmd() *cobra.Command {
   forward udp :1053 1.1.1.1:53 --proxy prod-socks5   # 通过 SOCKS5 的 UDP ASSOCIATE 代理 DNS
 
 示例:
-  agent-nettools forward local 127.0.0.1:3306 db.internal:3306
-  agent-nettools forward dynamic 1080
-  agent-nettools forward remote prod :9090 127.0.0.1:8080
-  agent-nettools forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
-  agent-nettools forward tls 0.0.0.0:443 127.0.0.1:80`,
+  agent-netx forward local 127.0.0.1:3306 db.internal:3306
+  agent-netx forward dynamic 1080
+  agent-netx forward remote prod :9090 127.0.0.1:8080
+  agent-netx forward udp 127.0.0.1:1053 1.1.1.1:53 --proxy prod-socks5
+  agent-netx forward tls 0.0.0.0:443 127.0.0.1:80`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return fmt.Errorf("usage: forward <local|remote|dynamic|tls> ...")

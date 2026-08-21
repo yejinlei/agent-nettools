@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"agent-nettools/agent"
+	"agent-netx/agent"
 
 	"github.com/spf13/cobra"
 )
@@ -25,13 +25,13 @@ func scpCmd() *cobra.Command {
 		Long: `通过 SSH/SFTP 上传或下载单个文件。
 
   # 上传本地文件到远程
-  agent-nettools scp --action upload --alias prod --src ./app.log --dst /var/log/app.log
-  agent-nettools scp --action upload --host 10.0.0.5 --user root --src f.bin --dst /tmp/f.bin
+  agent-netx scp --action upload --alias prod --src ./app.log --dst /var/log/app.log
+  agent-netx scp --action upload --host 10.0.0.5 --user root --src f.bin --dst /tmp/f.bin
 
   # 下载远程文件到本地
-  agent-nettools scp --action download --alias prod --src /etc/hosts --dst ./hosts.copy
+  agent-netx scp --action download --alias prod --src /etc/hosts --dst ./hosts.copy
 
-首次连接某主机时缺用户名/密码/私钥会在终端交互询问，并记入记忆(~/.agent-nettools)，
+首次连接某主机时缺用户名/密码/私钥会在终端交互询问，并记入记忆(~/.agent-netx)，
 之后用 --alias 即可免重复输入。`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if action != "upload" && action != "download" {

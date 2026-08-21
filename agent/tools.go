@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"agent-nettools/config"
-	"agent-nettools/proxy"
+	"agent-netx/config"
+	"agent-netx/proxy"
 )
 
 // ToolDef is a function-calling tool definition exposed to the LLM.

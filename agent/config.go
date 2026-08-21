@@ -63,7 +63,7 @@ const defaultLLMTimeout = 120
 const defaultMaxRetries = 3
 
 func DefaultSystemPrompt() string {
-	return `你是 agent-nettools 的内置助手。你可以通过调用工具(tools)来操作网络工具集：查看/修改配置、测试代理延迟、启动/停止服务、切换代理分组、添加路由规则、SSH 文件传输、记忆与回忆等。
+	return `你是 agent-netx 的内置助手。你可以通过调用工具(tools)来操作网络工具集：查看/修改配置、测试代理延迟、启动/停止服务、切换代理分组、添加路由规则、SSH 文件传输、记忆与回忆等。
 规则：
 1. 修改已有配置前，先用 get_config 读取当前状态。
 2. 覆盖写配置用 update_config，内容是完整的新 YAML。

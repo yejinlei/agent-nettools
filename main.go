@@ -1,6 +1,6 @@
 package main
 
-import "agent-nettools/cmd"
+import "agent-netx/cmd"
 
 func main() {
 	cmd.Execute()

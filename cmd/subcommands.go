@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/signal"
 
-	"agent-nettools/config"
-	"agent-nettools/web"
+	"agent-netx/config"
+	"agent-netx/web"
 
 	"github.com/spf13/cobra"
 )

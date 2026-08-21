@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"agent-nettools/agent"
-	"agent-nettools/config"
-	"agent-nettools/listener"
-	"agent-nettools/proxy"
-	"agent-nettools/router"
-	"agent-nettools/web"
+	"agent-netx/agent"
+	"agent-netx/config"
+	"agent-netx/listener"
+	"agent-netx/proxy"
+	"agent-netx/router"
+	"agent-netx/web"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -32,7 +32,7 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "agent-nettools",
+	Use:   "agent-netx",
 	Short: "A lightweight network proxy client with an LLM agent",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Usage()
@@ -412,6 +412,10 @@ func tuiCmd() *cobra.Command {
 }
 
 func Execute() {
+	if Version != "" && Version != "dev" {
+		os.Setenv("AGENT_NETX_VERSION", Version)
+	}
+	checkUpdate()
 	rootCmd.AddCommand(initCmd())
 	rootCmd.AddCommand(startCmd())
 	rootCmd.AddCommand(statusCmd())
