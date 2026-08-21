@@ -510,6 +510,8 @@ func (t *tui) run(ctx context.Context) error {
 
 		if strings.HasPrefix(line, "/") {
 			if t.handleCommand(line) {
+				t.history = append(t.history, line)
+				t.histIdx = len(t.history)
 				t.renderStatusBar()
 				continue
 			}
@@ -833,10 +835,17 @@ loop:
 					fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
 				}
 			case 'B':
-				if t.histIdx < len(t.history)-1 {
+				if t.histIdx < len(t.history) {
 					t.histIdx++
-					buf = []byte(t.history[t.histIdx])
-					fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
+					if t.histIdx < len(t.history) {
+						buf = []byte(t.history[t.histIdx])
+						fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > ")+string(buf))
+					} else {
+						// Past the newest entry → blank prompt so the user
+						// can type a fresh command.
+						buf = nil
+						fmt.Printf("\r%s%s", ClearLn, sPrompt.Render("你 > "))
+					}
 				}
 			case 'D':
 				if len(buf) == 0 {
