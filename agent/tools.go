@@ -48,6 +48,14 @@ func NewRegistry(cfg Config, mem *Memory, ask askFunc) *Registry {
 	return r
 }
 
+// SetAsk replaces the HIL prompter at runtime. Used by TUI to install a
+// raw-mode-compatible prompter after terminal setup — the init-time ask
+// (from promptOrSilent) only knows about plain stdin, so it can't echo or
+// handle Enter inside raw mode.
+func (r *Registry) SetAsk(ask askFunc) {
+	r.ask = ask
+}
+
 func (r *Registry) Defs() []ToolDef { return r.defs }
 
 func (r *Registry) Call(ctx context.Context, name string, args map[string]any) string {

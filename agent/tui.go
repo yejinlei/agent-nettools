@@ -478,6 +478,11 @@ func (t *tui) run(ctx context.Context) error {
 			defer func() { term.Restore(int(os.Stdin.Fd()), oldState) }()
 			fmt.Print(HideCursor)
 			defer fmt.Print(ShowCursor)
+			// TUI took stdin into raw mode — the init-time askFunc (from
+			// promptOrSilent) uses fmt.Fscanln which neither echoes nor
+			// terminates on \r in raw mode. Install a raw-mode-aware one so
+			// ask_human / gen_config / file_copy can actually ask the user.
+			t.registry.SetAsk(t.tuiAsk())
 		}
 	}
 
@@ -899,6 +904,55 @@ func readUtf8Tail(r io.Reader, prefix []byte, n int) ([]byte, error) {
 		return prefix, err
 	}
 	return append(prefix, tail...), nil
+}
+
+// tuiAsk returns an askFunc that works inside TUI raw mode. interactiveAsk
+// uses fmt.Fscanln which doesn't echo and waits for \n (Windows raw mode
+// sends \r) — user would see nothing and never get a chance to respond.
+// tuiAsk echoes each typed char (or '*' for hidden passwords), handles Enter,
+// backspace (UTF-8 aware), and Ctrl-C/Ctrl-D, and styles the prompt so it's
+// visually distinct from the normal "你 >" input line.
+func (t *tui) tuiAsk() askFunc {
+	return func(ctx context.Context, question string) string {
+		fmt.Println()
+		fmt.Print(sPrompt.Render("⚠ 请回答: ") + question)
+		buf := make([]byte, 0, 4096)
+		hidden := isPasswordPrompt(question)
+		for {
+			runeBytes, err := readUtf8Rune(os.Stdin)
+			if err != nil {
+				fmt.Println()
+				return string(buf)
+			}
+			ch := runeBytes[0]
+			switch {
+			case ch == 13, ch == 10: // Enter
+				fmt.Println()
+				return string(buf)
+			case ch == 4, ch == 3: // Ctrl-D / Ctrl-C
+				fmt.Println()
+				return ""
+			case ch == 127, ch == 8: // backspace
+				if len(buf) > 0 {
+					_, sz := utf8.DecodeLastRune(buf)
+					buf = buf[:len(buf)-sz]
+					for i := 0; i < sz; i++ {
+						fmt.Print("\b \b")
+					}
+				}
+			default:
+				if ch >= 32 {
+					buf = append(buf, runeBytes...)
+					if hidden {
+						fmt.Print("*")
+					} else {
+						fmt.Print(string(runeBytes))
+					}
+				}
+			}
+		}
+		return string(buf)
+	}
 }
 
 func (t *tui) thinkLoop(ctx context.Context, rawMode bool) (Message, error) {
