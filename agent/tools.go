@@ -85,6 +85,12 @@ func (r *Registry) register() {
 	r.funcs["get_config"] = func(ctx context.Context, args map[string]any) string {
 		cfg, err := config.Load(r.configPath())
 		if err != nil {
+			// Config file doesn't exist yet — normal state in TUI. Return an
+			// empty skeleton so the LLM can proceed (gen_config or update_config
+			// to create). Not an error; the agent decides the config shape.
+			if os.IsNotExist(err) {
+				return "```yaml\n# 当前无配置文件，可用 gen_config 或 update_config 创建\nlisten: {}\nmode: direct\nproxies: []\nproxy-groups: []\nrules: []\ntun: {}\ndns: {}\nweb: {}\nmitm: {}\nn2n: {}\nstunvpn: {}\n```\n\n(配置文件 " + r.configPath() + " 尚不存在)"
+			}
 			return "error: " + err.Error()
 		}
 		b, _ := config.YAMLMarshal(cfg)
@@ -112,10 +118,14 @@ func (r *Registry) register() {
 		if _, err := config.LoadFromBytes([]byte(yamlStr)); err != nil {
 			return "error: invalid YAML: " + err.Error()
 		}
-		if err := os.WriteFile(r.configPath(), []byte(yamlStr), 0644); err != nil {
+		path := r.configPath()
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return "error: mkdir " + filepath.Dir(path) + ": " + err.Error()
+		}
+		if err := os.WriteFile(path, []byte(yamlStr), 0644); err != nil {
 			return "error: " + err.Error()
 		}
-		return "配置已写入 " + r.configPath()
+		return "配置已写入 " + path
 	}
 
 	// gen_config: build a full YAML config FROM A STRUCTURED SPEC (not raw YAML).
@@ -400,7 +410,7 @@ func (r *Registry) register() {
 	// returned into the tool result so the model can continue.
 	r.defs = append(r.defs, ToolDef{
 		Name:        "ask_human",
-		Description: "向用户提问以获取人工输入(HIL)。当缺少工具无法自行决定的信息(偏好/确认/选择)时调用。非交互模式会返回错误。",
+		Description: "向用户提问以获取人工输入(HIL)。当缺少工具无法自行决定的信息(偏好/确认/选择)或**用户意图模糊(如'我想创建VPN'、'给我配个代理')**时，必须用此工具先澄清再动手。交互模式下会弹 ⚠ 请回答: 提示等用户输入，不是返回错误。",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -921,6 +931,13 @@ netdiag    查看进程网络端口和数据包（netstat / ss / tcpdump 等价�
 func (r *Registry) configPath() string {
 	if r.cfg.ConfigPath != "" {
 		return r.cfg.ConfigPath
+	}
+	// Default: prefer user home so TUI launched from any cwd (build/, repo root,
+	// arbitrary working dir) consistently reads the same config. Falls back to
+	// cwd/config.yml only if $HOME is somehow unset.
+	home, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(home, ".agent-netx", "config.yml")
 	}
 	cwd, _ := os.Getwd()
 	return filepath.Join(cwd, "config.yml")
