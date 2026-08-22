@@ -495,13 +495,17 @@ func (t *tui) run(ctx context.Context) error {
 		default:
 		}
 
-		line, err := t.readLine(rawMode)
-		// Pending answer from ask_human HIL: render it once under "你 >" and
-		// then continue the main loop so tool result + follow-up LLM reply flow
-		// naturally. This avoids the user having to re-type the answer.
-		if t.pendingAnswer != "" && err == nil && line == "" {
+		// Pending answer from ask_human HIL: consume it BEFORE readLine so the
+		// user isn't shown a blank "你 >" prompt and doesn't have to press
+		// Enter again. This renders the answer once under "你 >" and continues
+		// the main loop so tool result + LLM follow-up flow naturally.
+		line := ""
+		var err error
+		if t.pendingAnswer != "" {
 			line = t.pendingAnswer
 			t.pendingAnswer = ""
+		} else {
+			line, err = t.readLine(rawMode)
 		}
 		if err == io.EOF {
 			t.saveCurrentSession()
@@ -536,40 +540,40 @@ func (t *tui) run(ctx context.Context) error {
 		t.msgs = append(t.msgs, Message{Role: RoleUser, Content: line})
 		t.renderUserLine(line)
 
-		assistant, err := t.thinkLoop(ctx, rawMode)
-		if err != nil {
-			fmt.Println(t.renderError("⚠ " + err.Error()))
-			t.msgs = t.msgs[:len(t.msgs)-1]
-			t.renderPrompt("")
-			t.renderStatusBar()
-			continue
-		}
-		t.msgs = append(t.msgs, assistant)
-
-		if len(assistant.ToolCalls) == 0 {
-			if assistant.Content != "" {
-				t.renderAILine(assistant.Content)
+		// think + tool loop: run until the LLM returns zero tool calls, then
+		// surface its final answer. Previously the main loop returned to
+		// readLine after each tool-execution round, so the LLM had to be
+		// "re-asked" by the user just to continue (which made ask_human
+		// look dead because the answer was re-prompted as a fresh user turn).
+		for {
+			assistant, err := t.thinkLoop(ctx, rawMode)
+			if err != nil {
+				fmt.Println(t.renderError("⚠ " + err.Error()))
+				t.msgs = t.msgs[:len(t.msgs)-1]
+				break
 			}
-			t.saveCurrentSession()
-			t.renderPrompt("")
-			t.renderStatusBar()
-			continue
-		}
-
-		for _, tc := range assistant.ToolCalls {
-			t.tools++
-			args := ParseToolCallArgs(tc.Function.Arguments)
-			argsStr := compactArgs(args)
-			fmt.Println("  " + t.renderToolCall(tc.Function.Name, argsStr))
-			result := t.registry.Call(ctx, tc.Function.Name, args)
-			if result != "" {
-				t.renderToolResult(result)
+			t.msgs = append(t.msgs, assistant)
+			if len(assistant.ToolCalls) == 0 {
+				if assistant.Content != "" {
+					t.renderAILine(assistant.Content)
+				}
+				break
 			}
-			t.msgs = append(t.msgs, Message{
-				Role:       RoleTool,
-				Content:    result,
-				ToolCallID: tc.ID,
-			})
+			for _, tc := range assistant.ToolCalls {
+				t.tools++
+				args := ParseToolCallArgs(tc.Function.Arguments)
+				argsStr := compactArgs(args)
+				fmt.Println("  " + t.renderToolCall(tc.Function.Name, argsStr))
+				result := t.registry.Call(ctx, tc.Function.Name, args)
+				if result != "" {
+					t.renderToolResult(result)
+				}
+				t.msgs = append(t.msgs, Message{
+					Role:       RoleTool,
+					Content:    result,
+					ToolCallID: tc.ID,
+				})
+			}
 		}
 		t.saveCurrentSession()
 		t.renderPrompt("")
