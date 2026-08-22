@@ -91,19 +91,20 @@ func initStyles() {
 }
 
 type tui struct {
-	cfg      Config
-	ctx      context.Context
-	mem      *Memory
-	registry *Registry
-	llm      *LLM
-	msgs     []Message
-	history  []string
-	histIdx  int
-	tabIdx   int
-	turns    int
-	tools    int
-	store    *SessionStore
-	session  *Session
+	cfg          Config
+	ctx          context.Context
+	mem          *Memory
+	registry     *Registry
+	llm          *LLM
+	msgs         []Message
+	history      []string
+	histIdx      int
+	tabIdx       int
+	turns        int
+	tools        int
+	store        *SessionStore
+	session      *Session
+	pendingAnswer string // set by tuiAsk so the main loop renders the answer once under "你 >"
 }
 
 func newTUI(ctx context.Context, cfg Config) *tui {
@@ -495,6 +496,13 @@ func (t *tui) run(ctx context.Context) error {
 		}
 
 		line, err := t.readLine(rawMode)
+		// Pending answer from ask_human HIL: render it once under "你 >" and
+		// then continue the main loop so tool result + follow-up LLM reply flow
+		// naturally. This avoids the user having to re-type the answer.
+		if t.pendingAnswer != "" && err == nil && line == "" {
+			line = t.pendingAnswer
+			t.pendingAnswer = ""
+		}
 		if err == io.EOF {
 			t.saveCurrentSession()
 			t.renderGoodbye()
@@ -722,7 +730,7 @@ func (t *tui) renderStatusBar() {
 
 func (t *tui) renderUserLine(line string) {
 	fmt.Println()
-	fmt.Println(sUserRail.Render("你  ") + sUserText.Render(line))
+	fmt.Println(sPrompt.Render("你 > ") + sUserText.Render(line))
 }
 
 func (t *tui) renderAILine(content string) {
@@ -825,7 +833,18 @@ loop:
 		case 27:
 			inner := make([]byte, 3)
 			n2, _ := os.Stdin.Read(inner)
-			if n2 == 0 || inner[0] != '[' {
+			if n2 == 0 {
+				continue
+			}
+			if inner[0] == 13 {
+				// Alt+Enter (ESC + \r) -> insert newline so the user can type
+				// multiline content. Plain Enter still ends the line.
+				buf = append(buf, '\n')
+				fmt.Println()
+				fmt.Print(sPrompt.Render("    "))
+				continue
+			}
+			if inner[0] != '[' {
 				continue
 			}
 			key := inner[1]
@@ -928,6 +947,9 @@ func (t *tui) tuiAsk() askFunc {
 			switch {
 			case ch == 13, ch == 10: // Enter
 				fmt.Println()
+				// Set pending answer so the main loop renders the answer once
+				// under "你 > " — prevents the "user has to enter twice" bug.
+				t.pendingAnswer = string(buf)
 				return string(buf)
 			case ch == 4, ch == 3: // Ctrl-D / Ctrl-C
 				fmt.Println()
